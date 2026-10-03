@@ -34,10 +34,12 @@ def main() -> int:
     config_dir = Path(args.config) if args.config else None
     registry = load_default_registry(config_dir)
 
-    # Initialize Router and Engine
+    # Initialize Router, Storage, and Engine
     from modelmesh.core.routing.router import Router
+    from modelmesh.core.storage import Storage
     router = Router(registry=registry)
-    engine = ChatEngine(registry=registry, router=router)
+    storage = Storage()
+    engine = ChatEngine(registry=registry, router=router, storage=storage)
 
     # Select candidate or manual pins if specified
     candidate = None
