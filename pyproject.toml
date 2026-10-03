@@ -22,6 +22,10 @@ dependencies = [
     "pypdf>=4.2.0",
 ]
 
+[project.scripts]
+modelmesh = "modelmesh.app:main"
+modelmesh-cli = "modelmesh.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.2.0",

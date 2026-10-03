@@ -9,20 +9,16 @@ from pathlib import Path
 # Disable Chromium setuid sandbox restrictions in Linux containers
 os.environ.setdefault("QTWEBENGINE_DISABLE_SANDBOX", "1")
 
-from dotenv import load_dotenv
-from PyQt6.QtCore import QStandardPaths, Qt
-from PyQt6.QtWidgets import QApplication
-
-# Load environment keys
-env_file = Path.cwd() / ".env"
-load_dotenv(dotenv_path=env_file, override=True)
-
 from modelmesh.core.engine import ChatEngine
+from modelmesh.core.keys import load_env
 from modelmesh.core.registry import load_default_registry
 from modelmesh.core.routing.router import Router
 from modelmesh.core.storage import Storage
 from modelmesh.ui.main_window import MainWindow
 from modelmesh.ui.theme import apply_theme
+
+# Load environment keys
+load_env()
 
 
 def get_db_path() -> Path:

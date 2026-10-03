@@ -216,9 +216,24 @@ class ModelRegistry:
         p.write_text(yaml_content, encoding="utf-8")
 
 
+def get_default_config_dir() -> Path:
+    """Find config directory in current working directory or workspace root."""
+    curr = Path.cwd().resolve()
+    for p in [curr] + list(curr.parents):
+        cfg_dir = p / "config"
+        if (cfg_dir / "providers.yaml").exists() or (cfg_dir / "providers.example.yaml").exists():
+            return cfg_dir
+    src_parent = Path(__file__).resolve().parent
+    for p in [src_parent] + list(src_parent.parents):
+        cfg_dir = p / "config"
+        if (cfg_dir / "providers.yaml").exists() or (cfg_dir / "providers.example.yaml").exists():
+            return cfg_dir
+    return Path.cwd() / "config"
+
+
 def load_default_registry(config_dir: Optional[Path | str] = None) -> ModelRegistry:
     """Helper to load providers.yaml (or fallback to providers.example.yaml)."""
-    base = Path(config_dir) if config_dir else Path.cwd() / "config"
+    base = Path(config_dir) if config_dir else get_default_config_dir()
     target = base / "providers.yaml"
     example = base / "providers.example.yaml"
 

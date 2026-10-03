@@ -8,12 +8,29 @@ from typing import Dict, List, Optional
 from dotenv import find_dotenv, load_dotenv
 
 
+def find_project_root() -> Path:
+    """Locate project root by searching for pyproject.toml, .env, or config/."""
+    curr = Path.cwd().resolve()
+    for p in [curr] + list(curr.parents):
+        if (p / "pyproject.toml").exists() or (p / "config" / "providers.yaml").exists() or (p / ".env").exists():
+            return p
+    src_parent = Path(__file__).resolve().parent
+    for p in [src_parent] + list(src_parent.parents):
+        if (p / "pyproject.toml").exists() or (p / "config" / "providers.yaml").exists() or (p / ".env").exists():
+            return p
+    return Path.cwd()
+
+
 def get_default_env_path() -> Path:
-    """Find the .env file in the workspace or default to current directory .env."""
+    """Find the .env file in the workspace root or current directory."""
+    root = find_project_root()
+    env_candidate = root / ".env"
+    if env_candidate.exists():
+        return env_candidate
     found = find_dotenv(usecwd=True)
     if found:
         return Path(found)
-    return Path.cwd() / ".env"
+    return env_candidate
 
 
 def load_env(env_path: Optional[Path] = None) -> None:
@@ -23,7 +40,7 @@ def load_env(env_path: Optional[Path] = None) -> None:
     """
     path = env_path or get_default_env_path()
     if path.exists():
-        load_dotenv(dotenv_path=path, override=False)
+        load_dotenv(dotenv_path=path, override=True)
 
 
 def get_env_key(var_name: str) -> Optional[str]:
