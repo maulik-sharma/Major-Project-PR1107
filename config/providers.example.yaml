@@ -1,0 +1,131 @@
+# ModelMesh Providers and Models Configuration
+# Example configuration file showing multi-provider routing and endpoints
+
+providers:
+  - id: groq
+    protocol: openai_compat
+    base_url: https://api.groq.com/openai/v1
+    auth_env:
+      - GROQ_API_KEY
+
+  - id: openrouter
+    protocol: openai_compat
+    base_url: https://openrouter.ai/api/v1
+    auth_env:
+      - OPENROUTER_API_KEY
+
+  - id: ollama
+    protocol: openai_compat
+    base_url: http://localhost:11434/v1
+    auth_env: []
+
+  - id: anthropic
+    protocol: anthropic
+    auth_env:
+      - ANTHROPIC_API_KEY
+
+  - id: mock
+    protocol: mock
+    auth_env: []
+
+models:
+  # Multi-endpoint open-weight model: demonstrates cross-provider routing and failover
+  - id: llama-fast
+    display_name: "Llama 3.1 8B (Multi-Provider)"
+    tier: cheap
+    context_window: 131072
+    max_output: 8192
+    capabilities:
+      - streaming
+      - tools
+    local: false
+    enabled: true
+    endpoint_policy: priority
+    endpoints:
+      - id: llama-fast@groq
+        provider: groq
+        api_model: llama-3.1-8b-instant
+        price_in_per_mtok: 0.05
+        price_out_per_mtok: 0.08
+        priority: 1
+        enabled: true
+      - id: llama-fast@openrouter
+        provider: openrouter
+        api_model: meta-llama/llama-3.1-8b-instruct
+        price_in_per_mtok: 0.06
+        price_out_per_mtok: 0.09
+        priority: 2
+        enabled: true
+      - id: llama-fast@ollama
+        provider: ollama
+        api_model: llama3.1:8b
+        price_in_per_mtok: 0.0
+        price_out_per_mtok: 0.0
+        priority: 3
+        enabled: true
+
+  # Mid-tier Claude model
+  - id: claude-mid
+    display_name: "Claude 3.5 Sonnet"
+    tier: mid
+    context_window: 200000
+    max_output: 8192
+    capabilities:
+      - streaming
+      - tools
+      - vision
+    local: false
+    enabled: true
+    endpoint_policy: priority
+    endpoints:
+      - id: claude-mid@anthropic
+        provider: anthropic
+        api_model: claude-3-5-sonnet-20241022
+        price_in_per_mtok: 3.00
+        price_out_per_mtok: 15.00
+        priority: 1
+        enabled: true
+
+  # Mock models for testing and offline demo
+  - id: mock-fast
+    display_name: "Mock Fast Model"
+    tier: cheap
+    context_window: 32000
+    max_output: 4096
+    capabilities:
+      - streaming
+      - tools
+      - vision
+    local: true
+    enabled: true
+    endpoint_policy: priority
+    endpoints:
+      - id: mock-fast@mock
+        provider: mock
+        api_model: mock-instant
+        price_in_per_mtok: 0.01
+        price_out_per_mtok: 0.02
+        priority: 1
+        enabled: true
+
+  - id: mock-smart
+    display_name: "Mock Smart / Reasoning Model"
+    tier: premium
+    context_window: 128000
+    max_output: 8192
+    capabilities:
+      - streaming
+      - tools
+      - reasoning
+      - vision
+    local: true
+    enabled: true
+    endpoint_policy: priority
+    endpoints:
+      - id: mock-smart@mock
+        provider: mock
+        api_model: mock-reasoning
+        price_in_per_mtok: 5.00
+        price_out_per_mtok: 15.00
+        priority: 1
+        enabled: true

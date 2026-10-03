@@ -1,0 +1,64 @@
+# Provider Presets for ModelMesh
+# Used by Settings and CLI to quickly configure standard providers
+
+presets:
+  - id: openai
+    name: "OpenAI"
+    protocol: openai_compat
+    base_url: https://api.openai.com/v1
+    auth_env:
+      - OPENAI_API_KEY
+
+  - id: gemini
+    name: "Google Gemini (OpenAI-compatible)"
+    protocol: openai_compat
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    auth_env:
+      - GEMINI_API_KEY
+
+  - id: groq
+    name: "Groq"
+    protocol: openai_compat
+    base_url: https://api.groq.com/openai/v1
+    auth_env:
+      - GROQ_API_KEY
+
+  - id: openrouter
+    name: "OpenRouter"
+    protocol: openai_compat
+    base_url: https://openrouter.ai/api/v1
+    auth_env:
+      - OPENROUTER_API_KEY
+
+  - id: deepseek
+    name: "DeepSeek"
+    protocol: openai_compat
+    base_url: https://api.deepseek.com
+    auth_env:
+      - DEEPSEEK_API_KEY
+
+  - id: ollama
+    name: "Ollama (Local)"
+    protocol: openai_compat
+    base_url: http://localhost:11434/v1
+    auth_env: []
+
+  - id: anthropic
+    name: "Anthropic Claude"
+    protocol: anthropic
+    auth_env:
+      - ANTHROPIC_API_KEY
+
+  - id: mock
+    name: "Mock Provider (Offline Demo/Testing)"
+    protocol: mock
+    auth_env: []
+
+  - id: bedrock
+    name: "AWS Bedrock (Optional)"
+    protocol: bedrock
+    auth_env:
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+    options:
+      region: us-east-1
