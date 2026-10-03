@@ -34,22 +34,24 @@ def main() -> int:
     config_dir = Path(args.config) if args.config else None
     registry = load_default_registry(config_dir)
 
-    # Initialize Engine (Router will be attached in T6)
-    engine = ChatEngine(registry=registry)
+    # Initialize Router and Engine
+    from modelmesh.core.routing.router import Router
+    router = Router(registry=registry)
+    engine = ChatEngine(registry=registry, router=router)
 
-    # Select candidate if specified
+    # Select candidate or manual pins if specified
     candidate = None
+    pinned_model = None
+    pinned_endpoint = None
+
     if args.endpoint:
+        pinned_endpoint = args.endpoint
         candidate = registry.get_candidate(args.endpoint)
         if not candidate:
             print(f"Error: Endpoint '{args.endpoint}' not found in registry.", file=sys.stderr)
             return 1
     elif args.model:
-        cands = [c for c in registry.candidates() if c.model_id == args.model]
-        if not cands:
-            print(f"Error: Model '{args.model}' not found or has no enabled endpoints.", file=sys.stderr)
-            return 1
-        candidate = cands[0]
+        pinned_model = args.model
 
     request = ChatRequest(
         messages=[Message.from_text(role="user", text=args.prompt)]
@@ -66,6 +68,8 @@ def main() -> int:
             request=request,
             candidate=candidate,
             strategy_name=args.strategy,
+            pinned_model_id=pinned_model,
+            pinned_endpoint_id=pinned_endpoint,
         )
 
         for ev in events:

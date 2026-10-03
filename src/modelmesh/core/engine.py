@@ -40,6 +40,9 @@ class ChatEngine:
         strategy_name: str = "manual",
         cancel_event: Optional[threading.Event] = None,
         conversation_id: Optional[str] = None,
+        pinned_model_id: Optional[str] = None,
+        pinned_endpoint_id: Optional[str] = None,
+        seed: Optional[int] = None,
     ) -> Iterator[StreamEvent]:
         """Execute a full conversation turn with routing, streaming, and fallback.
 
@@ -62,7 +65,13 @@ class ChatEngine:
             )
         elif self.router is not None:
             # Route via strategy
-            decision = self.router.route(request=request, strategy_name=strategy_name)
+            decision = self.router.route(
+                request=request,
+                strategy_name=strategy_name,
+                pinned_model_id=pinned_model_id,
+                pinned_endpoint_id=pinned_endpoint_id,
+                seed=seed,
+            )
             candidates_to_try = [decision.chosen_candidate] + list(decision.fallback_chain)
         else:
             # Default fallback: pick first available candidate
@@ -91,22 +100,27 @@ class ChatEngine:
         )
 
         last_error: Optional[ProviderError] = None
+        last_failed_cand: Optional[Candidate] = None
         accumulated_text = ""
         accumulated_reasoning = ""
         final_usage: Optional[Usage] = None
         successful_candidate: Optional[Candidate] = None
         time_to_first_token: Optional[float] = None
 
-        for idx, cand in enumerate(candidates_to_try):
+        candidate_queue: List[Candidate] = list(candidates_to_try)
+
+        while candidate_queue:
             if cancel_event and cancel_event.is_set():
                 return
 
-            if idx > 0:
+            cand = candidate_queue.pop(0)
+
+            if last_failed_cand is not None:
                 # Emit FALLBACK event before trying next candidate
                 yield StreamEvent(
                     type=StreamEventType.FALLBACK,
                     data={
-                        "from_candidate": candidates_to_try[idx - 1],
+                        "from_candidate": last_failed_cand,
                         "to_candidate": cand,
                         "error": str(last_error),
                     },
@@ -130,18 +144,22 @@ class ChatEngine:
                             has_started_output = True
                             time_to_first_token = time.time() - start_time
                         accumulated_text += event.text
+                        yield event
                     elif event.type == StreamEventType.REASONING_DELTA and event.reasoning:
                         accumulated_reasoning += event.reasoning
+                        yield event
                     elif event.type == StreamEventType.USAGE and event.usage:
                         final_usage = event.usage
-
-                    yield event
+                        yield event
+                    elif event.type == StreamEventType.TOOL_CALL:
+                        yield event
 
                 successful_candidate = cand
                 break  # Completed successfully
 
             except ProviderError as exc:
                 last_error = exc
+                last_failed_cand = cand
                 # If output already started streaming, do not silently failover
                 if accumulated_text:
                     yield StreamEvent(
@@ -158,8 +176,8 @@ class ChatEngine:
                 # Check if this error should skip siblings of the same model
                 if exc.should_skip_model_siblings:
                     # Filter out remaining endpoints belonging to the same model
-                    candidates_to_try = [
-                        c for c in candidates_to_try[idx + 1 :] if c.model_id != cand.model_id
+                    candidate_queue = [
+                        c for c in candidate_queue if c.model_id != cand.model_id
                     ]
                 continue
 
@@ -170,6 +188,7 @@ class ChatEngine:
                     provider_id=cand.provider_id,
                     raw_error=exc,
                 )
+                last_failed_cand = cand
                 if accumulated_text:
                     yield StreamEvent(
                         type=StreamEventType.ERROR,
