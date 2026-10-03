@@ -195,3 +195,11 @@ def test_main_window_lifecycle(qapp, tmp_path: Path) -> None:
     assert len(msgs) >= 2
     assert msgs[0].text_content() == "Hello from unit test"
     assert msgs[1].role == "assistant"
+
+
+def test_app_module(qapp) -> None:
+    from modelmesh import app
+    db_path = app.get_db_path()
+    assert db_path.name == "modelmesh.db"
+    assert db_path.parent.exists()
+

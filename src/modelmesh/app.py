@@ -6,8 +6,13 @@ import os
 import sys
 from pathlib import Path
 
-# Disable Chromium setuid sandbox restrictions in Linux containers
-os.environ.setdefault("QTWEBENGINE_DISABLE_SANDBOX", "1")
+# Ensure src is in sys.path when script is run directly
+_src_dir = str(Path(__file__).resolve().parent.parent)
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
+
+from PyQt6.QtCore import QStandardPaths
+from PyQt6.QtWidgets import QApplication
 
 from modelmesh.core.engine import ChatEngine
 from modelmesh.core.keys import load_env
@@ -31,7 +36,12 @@ def get_db_path() -> Path:
     else:
         app_dir = Path(app_data) / "modelmesh"
 
-    app_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        app_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        app_dir = Path.cwd() / "data"
+        app_dir.mkdir(parents=True, exist_ok=True)
+
     return app_dir / "modelmesh.db"
 
 

@@ -6,6 +6,11 @@ import argparse
 import sys
 from pathlib import Path
 
+# Ensure src is in sys.path when script is run directly
+_src_dir = str(Path(__file__).resolve().parent.parent)
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
+
 from modelmesh.core.engine import ChatEngine
 from modelmesh.core.keys import load_env
 from modelmesh.core.registry import load_default_registry
