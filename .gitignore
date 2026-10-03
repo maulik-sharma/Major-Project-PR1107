@@ -1,0 +1,36 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Secrets and environment variables
+.env
+.env.*
+!.env.example
+
+# Local configuration and runtime data
+config/providers.yaml
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Python cache & build
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
