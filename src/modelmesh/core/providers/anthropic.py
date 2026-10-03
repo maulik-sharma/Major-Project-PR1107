@@ -222,8 +222,12 @@ class AnthropicAdapter(ProviderAdapter):
         if system_prompt:
             kwargs["system"] = system_prompt
 
+        extra_body: Dict[str, Any] = {}
         if request.temperature is not None:
-            kwargs["temperature"] = request.temperature
+            extra_body["temperature"] = request.temperature
+
+        if extra_body:
+            kwargs["extra_body"] = extra_body
 
         if request.tools and "tools" in candidate.effective_capabilities:
             kwargs["tools"] = _convert_tools_to_anthropic(request.tools)

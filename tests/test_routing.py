@@ -407,3 +407,60 @@ def test_engine_manual_mode_no_cross_model_failover() -> None:
     assert StreamEventType.ERROR in event_types
     assert StreamEventType.DONE not in event_types
     assert StreamEventType.FALLBACK not in event_types
+
+
+def test_auto_strategy_excludes_mock_when_real_providers_exist(monkeypatch) -> None:
+    """Test that auto routing strategies filter out mock candidates when real candidates exist."""
+    # Mock environment variable for real provider auth
+    monkeypatch.setenv("DUMMY_KEY", "dummy-secret-value")
+
+    reg = ModelRegistry()
+    reg.add_provider(ProviderConfig(id="real_prov", protocol="openai_compat", auth_env=["DUMMY_KEY"]))
+    reg.add_provider(ProviderConfig(id="mock_prov", protocol="mock"))
+
+    # Real model ($5/Mtok)
+    reg.add_model(
+        ModelConfig(
+            id="real_model",
+            display_name="Real Flagship Model",
+            endpoints=[
+                EndpointConfig(
+                    id="real@real_prov",
+                    provider="real_prov",
+                    api_model="real-v1",
+                    price_in_per_mtok=5.0,
+                    price_out_per_mtok=5.0,
+                )
+            ],
+        )
+    )
+
+    # Mock model ($20/Mtok - more expensive)
+    reg.add_model(
+        ModelConfig(
+            id="mock_expensive",
+            display_name="Mock Expensive Model",
+            endpoints=[
+                EndpointConfig(
+                    id="mock@mock_prov",
+                    provider="mock_prov",
+                    api_model="mock-exp",
+                    price_in_per_mtok=20.0,
+                    price_out_per_mtok=20.0,
+                )
+            ],
+        )
+    )
+
+    router = Router(registry=reg)
+    req = ChatRequest(messages=[Message.from_text("user", "Hello router")])
+
+    # In expensive_first, even though mock is $20 and real is $5, auto strategy MUST pick the real model!
+    decision = router.route(request=req, strategy_name="expensive_first")
+    assert decision.chosen_candidate.model_id == "real_model"
+    assert all(c.model_id != "mock_expensive" for c in decision.fallback_chain)
+
+    # In manual mode, user can specifically request the mock model
+    manual_decision = router.route(request=req, strategy_name="manual", pinned_model_id="mock_expensive")
+    assert manual_decision.chosen_candidate.model_id == "mock_expensive"
+

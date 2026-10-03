@@ -180,11 +180,20 @@ def test_main_window_lifecycle(qapp, tmp_path: Path) -> None:
         storage=storage,
     )
 
-    # Check initial conversation creation
+    # Check initial conversation creation and dropdowns
     assert win.current_conversation_id is not None
-    assert win.model_combo.count() >= 3
+    assert win.strategy_combo.count() == 4
+    assert win.model_combo.count() >= 1
 
-    # Send a message
+    # Strategy combo default is cheapest_first -> model_combo is disabled
+    assert not win.model_combo.isEnabled()
+
+    # Switching to manual enables model_combo
+    win.strategy_combo.setCurrentIndex(3)  # Manual Selection
+    assert win.strategy_combo.currentData() == "manual"
+    assert win.model_combo.isEnabled()
+
+    # Send a message in manual mode
     win._on_send_message("Hello from unit test", [])
     if win.current_worker:
         win.current_worker.wait(5000)

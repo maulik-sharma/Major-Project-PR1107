@@ -86,15 +86,29 @@ class MainWindow(QMainWindow):
         self.toolbar.setMovable(False)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.toolbar)
 
-        # Strategy / Model selector
-        self.strategy_label = QLabel(" 🎯 Mode: ")
+        # Strategy & Model Selectors
+        self.strategy_label = QLabel(" 🎯 Strategy: ")
         self.strategy_label.setStyleSheet("font-weight: 600; color: #9da7b3;")
         self.toolbar.addWidget(self.strategy_label)
+
+        self.strategy_combo = QComboBox()
+        self.strategy_combo.setMinimumWidth(190)
+        self._populate_strategy_combo()
+        self.strategy_combo.currentIndexChanged.connect(self._on_strategy_changed)
+        self.toolbar.addWidget(self.strategy_combo)
+
+        self.toolbar.addSeparator()
+
+        self.model_label = QLabel(" 🤖 Model: ")
+        self.model_label.setStyleSheet("font-weight: 600; color: #9da7b3;")
+        self.toolbar.addWidget(self.model_label)
 
         self.model_combo = QComboBox()
         self.model_combo.setMinimumWidth(280)
         self._populate_model_combo()
         self.toolbar.addWidget(self.model_combo)
+
+        self._on_strategy_changed()
 
         self.toolbar.addSeparator()
 
@@ -158,34 +172,42 @@ class MainWindow(QMainWindow):
         self.status_bar.addPermanentWidget(self.cost_status_label)
         self.status_bar.showMessage("Ready · ModelMesh Router active")
 
+    def _populate_strategy_combo(self) -> None:
+        """Populate the routing strategy selector."""
+        self.strategy_combo.clear()
+        self.strategy_combo.addItem("🎯 Auto: Cheapest First", "cheapest_first")
+        self.strategy_combo.addItem("💎 Auto: Expensive First", "expensive_first")
+        self.strategy_combo.addItem("🎲 Auto: Random Baseline", "random")
+        self.strategy_combo.addItem("⚙️ Manual Selection", "manual")
+
     def _populate_model_combo(self) -> None:
-        """Fill model/strategy dropdown with Auto strategies and individual models."""
+        """Fill model selector dropdown with available models and endpoints."""
         self.model_combo.clear()
-
-        # Dynamic Auto Strategies
-        self.model_combo.addItem("🎯 Auto: Cheapest First", {"strategy": "cheapest_first"})
-        self.model_combo.addItem("💎 Auto: Expensive First", {"strategy": "expensive_first"})
-        self.model_combo.addItem("🎲 Auto: Random Baseline", {"strategy": "random"})
-        self.model_combo.insertSeparator(self.model_combo.count())
-
-        # Models & Endpoints
         for model in self.registry.models():
-            # Model with Auto Endpoint Policy
             self.model_combo.addItem(
                 f"🤖 {model.display_name} (Auto Provider)",
-                {"strategy": "manual", "pinned_model_id": model.id},
+                {"pinned_model_id": model.id},
             )
-            # Pinned specific endpoints if model has multiple
             if len(model.endpoints) > 1:
                 for ep in model.endpoints:
                     self.model_combo.addItem(
                         f"   ↳ on {ep.provider} (${ep.price_in_per_mtok:.3f}/Mtok)",
                         {
-                            "strategy": "manual",
                             "pinned_model_id": model.id,
                             "pinned_endpoint_id": ep.id,
                         },
                     )
+
+    def _on_strategy_changed(self) -> None:
+        """Toggle model combo box enabled state based on selected strategy."""
+        strategy = self.strategy_combo.currentData() or "cheapest_first"
+        is_manual = (strategy == "manual")
+        self.model_combo.setEnabled(is_manual)
+        self.model_label.setEnabled(is_manual)
+        if is_manual:
+            self.model_combo.setToolTip("Select model or specific provider endpoint to route directly.")
+        else:
+            self.model_combo.setToolTip("Model is selected automatically based on the chosen routing strategy.")
 
     def _load_initial_data(self) -> None:
         """Load conversation list from SQLite storage or create first chat."""
@@ -310,11 +332,15 @@ class MainWindow(QMainWindow):
             max_tokens=self.generation_settings.get("max_tokens"),
         )
 
-        # Determine routing mode from dropdown
-        combo_data = self.model_combo.currentData() or {"strategy": "cheapest_first"}
-        strategy_name = combo_data.get("strategy", "cheapest_first")
-        pinned_model_id = combo_data.get("pinned_model_id")
-        pinned_endpoint_id = combo_data.get("pinned_endpoint_id")
+        # Determine routing mode from dropdowns
+        strategy_name = self.strategy_combo.currentData() or "cheapest_first"
+        pinned_model_id = None
+        pinned_endpoint_id = None
+
+        if strategy_name == "manual":
+            combo_data = self.model_combo.currentData() or {}
+            pinned_model_id = combo_data.get("pinned_model_id")
+            pinned_endpoint_id = combo_data.get("pinned_endpoint_id")
 
         # Start Worker Thread
         self.composer.set_streaming_state(True)

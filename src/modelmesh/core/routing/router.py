@@ -68,6 +68,12 @@ class Router:
                 f"No eligible candidates satisfied request requirements. Rejections: {reasons_summary}"
             )
 
+        # For auto strategies (non-manual), prioritize real providers over mock
+        if strategy_name != "manual" and not pinned_model_id and not pinned_endpoint_id:
+            real_candidates = [c for c in eligible if c.protocol != "mock"]
+            if real_candidates:
+                eligible = real_candidates
+
         strategy = get_strategy(strategy_name)
 
         decision = strategy.rank(
