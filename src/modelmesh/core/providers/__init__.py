@@ -7,6 +7,7 @@ from modelmesh.core.providers.base import (
 )
 
 # Import adapters to trigger registration
+from modelmesh.core.providers import anthropic
 from modelmesh.core.providers import mock
 from modelmesh.core.providers import openai_compat
 
@@ -14,6 +15,7 @@ __all__ = [
     "ProviderAdapter",
     "get_adapter",
     "register_adapter",
+    "anthropic",
     "mock",
     "openai_compat",
 ]
