@@ -84,8 +84,18 @@ class ChatView(QWebEngineView):
         self._stream_timer.start()
 
         # Load chat.html
+        self._is_page_loaded = False
+        self._queued_js: List[str] = []
+        self.loadFinished.connect(self._on_load_finished)
+
         html_path = Path(__file__).parent / "web" / "chat.html"
         self.load(QUrl.fromLocalFile(str(html_path.resolve())))
+
+    def _on_load_finished(self, ok: bool) -> None:
+        self._is_page_loaded = True
+        for script in self._queued_js:
+            self.page().runJavaScript(script)
+        self._queued_js.clear()
 
     def _flush_stream_buffers(self) -> None:
         """Batch flush token deltas to JavaScript to prevent UI stutter."""
@@ -104,8 +114,11 @@ class ChatView(QWebEngineView):
     def _run_js(self, func_name: str, *args: Any) -> None:
         """Safely invoke a JavaScript function with JSON-encoded arguments."""
         encoded_args = [json.dumps(a) for a in args]
-        script = f"{func_name}({', '.join(encoded_args)});"
-        self.page().runJavaScript(script)
+        script = f"if (typeof window['{func_name}'] === 'function') {{ window['{func_name}']({', '.join(encoded_args)}); }}"
+        if self._is_page_loaded:
+            self.page().runJavaScript(script)
+        else:
+            self._queued_js.append(script)
 
     def add_user_message(
         self,

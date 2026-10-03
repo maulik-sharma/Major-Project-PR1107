@@ -7,33 +7,20 @@ let pyBridge = null;
 let currentAssistantId = null;
 let messageBuffers = {}; // msgId -> { text: '', reasoning: '', isStreaming: true }
 
-// Configure marked with highlight.js
-marked.setOptions({
-  highlight: function(code, lang) {
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        return hljs.highlight(code, { language: lang }).value;
-      } catch (err) {}
-    }
-    try {
-      return hljs.highlightAuto(code).value;
-    } catch (err) {}
-    return code;
-  },
-  breaks: true,
-  gfm: true
-});
-
 // Initialize Qt WebChannel
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof QWebChannel !== 'undefined') {
-    new QWebChannel(qt.webChannelTransport, function(channel) {
-      pyBridge = channel.objects.pyBridge;
-      window.pyBridge = pyBridge;
-      if (pyBridge && pyBridge.on_ready) {
-        pyBridge.on_ready();
-      }
-    });
+    try {
+      new QWebChannel(qt.webChannelTransport, function(channel) {
+        pyBridge = channel.objects.pyBridge;
+        window.pyBridge = pyBridge;
+        if (pyBridge && pyBridge.on_ready) {
+          pyBridge.on_ready();
+        }
+      });
+    } catch (err) {
+      console.error('QWebChannel initialization error:', err);
+    }
   }
 });
 
@@ -82,7 +69,6 @@ function copyTextToClipboard(text, btnElement) {
       }, 1500);
     }
   }).catch(err => {
-    console.error('Failed to copy text:', err);
     if (pyBridge && pyBridge.on_copy) {
       pyBridge.on_copy(text);
     }
@@ -90,20 +76,36 @@ function copyTextToClipboard(text, btnElement) {
 }
 
 function renderMarkdown(rawText) {
-  const dirtyHtml = marked.parse(rawText);
-  const cleanHtml = DOMPurify.sanitize(dirtyHtml);
-  return cleanHtml;
+  try {
+    if (typeof marked !== 'undefined' && marked.parse) {
+      const parsed = marked.parse(rawText);
+      if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
+        return DOMPurify.sanitize(parsed);
+      }
+      return parsed;
+    }
+  } catch (err) {
+    console.error('Markdown rendering error:', err);
+  }
+  return rawText;
 }
 
 function attachCodeCopyButtons(container) {
+  if (!container) return;
   const preElements = container.querySelectorAll('pre');
   preElements.forEach((pre) => {
+    const codeEl = pre.querySelector('code');
+    if (codeEl && typeof hljs !== 'undefined' && !codeEl.dataset.highlighted) {
+      try {
+        hljs.highlightElement(codeEl);
+        codeEl.dataset.highlighted = 'yes';
+      } catch (e) {}
+    }
+
     if (pre.querySelector('.code-header')) return;
 
-    const codeEl = pre.querySelector('code');
     const rawCode = codeEl ? codeEl.innerText : pre.innerText;
 
-    // Detect language class
     let lang = 'code';
     if (codeEl && codeEl.className) {
       const match = codeEl.className.match(/language-(\w+)/);
@@ -127,6 +129,7 @@ function attachCodeCopyButtons(container) {
 function add_user_message(msgId, text, parts = []) {
   hideEmptyState();
   const container = document.getElementById('chat-container');
+  if (!container) return;
 
   const row = document.createElement('div');
   row.className = 'message-row user-row';
@@ -143,7 +146,8 @@ function add_user_message(msgId, text, parts = []) {
 
   const bubble = document.createElement('div');
   bubble.className = 'user-bubble';
-  bubble.innerHTML = imagesHtml + DOMPurify.sanitize(text);
+  const cleanText = (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) ? DOMPurify.sanitize(text) : text;
+  bubble.innerHTML = imagesHtml + cleanText;
 
   row.appendChild(bubble);
   container.appendChild(row);
@@ -159,6 +163,7 @@ function start_assistant_message(msgId, modelName = '', providerName = '', strat
   messageBuffers[msgId] = { text: '', reasoning: '', isStreaming: true };
 
   const container = document.getElementById('chat-container');
+  if (!container) return;
 
   const row = document.createElement('div');
   row.className = 'message-row assistant-row';
@@ -193,7 +198,7 @@ function start_assistant_message(msgId, modelName = '', providerName = '', strat
   if (modelName) chips += `<span class="chip chip-model">🤖 ${modelName}</span>`;
   if (providerName) chips += `<span class="chip chip-provider">⚡ ${providerName}</span>`;
   if (strategyName) {
-    const tooltip = reason ? ` title="${DOMPurify.sanitize(reason)}"` : '';
+    const tooltip = reason ? ` title="${reason.replace(/"/g, '&quot;')}"` : '';
     chips += `<span class="chip chip-strategy"${tooltip}>🎯 ${strategyName}</span>`;
   }
   footer.innerHTML = chips;
@@ -250,6 +255,7 @@ function append_reasoning_chunk(msgId, chunk) {
  */
 function show_fallback_notice(fromCandId, toCandId, reason = '') {
   const container = document.getElementById('chat-container');
+  if (!container) return;
   const banner = document.createElement('div');
   banner.className = 'fallback-banner';
   banner.innerHTML = `
@@ -278,10 +284,9 @@ function add_tool_card(msgId, toolId, toolName, argsJson = '{}') {
       <span>🛠️ Tool Call: <strong>${toolName}</strong></span>
       <span style="font-size:11px;opacity:0.8;">Running...</span>
     </div>
-    <div class="tool-body">${DOMPurify.sanitize(argsJson)}</div>
+    <div class="tool-body">${argsJson}</div>
   `;
 
-  // Insert before content element
   const contentEl = document.getElementById(`content-${msgId}`);
   if (contentEl) {
     row.insertBefore(card, contentEl);
@@ -317,7 +322,7 @@ function finish_assistant_message(msgId, meta = {}) {
     if (model) chips += `<span class="chip chip-model">🤖 ${model}</span>`;
     if (prov) chips += `<span class="chip chip-provider">⚡ ${prov}</span>`;
     if (strat) {
-      const tooltip = reason ? ` title="${DOMPurify.sanitize(reason)}"` : '';
+      const tooltip = reason ? ` title="${reason.replace(/"/g, '&quot;')}"` : '';
       chips += `<span class="chip chip-strategy"${tooltip}>🎯 ${strat}</span>`;
     }
 
@@ -358,11 +363,12 @@ function regenerateMessage(msgId) {
  */
 function set_error(msgId, errorMsg, category = 'unknown') {
   const row = document.getElementById(`msg-${msgId}`) || document.getElementById('chat-container');
+  if (!row) return;
   const errorBanner = document.createElement('div');
   errorBanner.className = 'error-banner';
   errorBanner.innerHTML = `
     <div class="error-title">⚠️ Error (${category})</div>
-    <div>${DOMPurify.sanitize(errorMsg)}</div>
+    <div>${errorMsg}</div>
   `;
   row.appendChild(errorBanner);
   scrollToBottom(true);
@@ -390,3 +396,19 @@ function set_theme(themeName) {
     document.body.className = 'dark-theme';
   }
 }
+
+// Global window exposures
+window.add_user_message = add_user_message;
+window.start_assistant_message = start_assistant_message;
+window.append_text_chunk = append_text_chunk;
+window.append_reasoning_chunk = append_reasoning_chunk;
+window.show_fallback_notice = show_fallback_notice;
+window.add_tool_card = add_tool_card;
+window.finish_assistant_message = finish_assistant_message;
+window.set_error = set_error;
+window.clear_chat = clear_chat;
+window.set_theme = set_theme;
+window.onSuggestionClick = onSuggestionClick;
+window.toggleThinking = toggleThinking;
+window.copyMessageText = copyMessageText;
+window.regenerateMessage = regenerateMessage;
