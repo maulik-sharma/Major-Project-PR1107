@@ -207,15 +207,16 @@ def test_manual_pinned_endpoint_and_model() -> None:
     router = Router(registry=reg)
     req = ChatRequest(messages=[Message.from_text("user", "Hello")])
 
-    # Pin specific endpoint
+    # Pin specific endpoint -> failover disabled
     dec = router.route(request=req, strategy_name="manual", pinned_endpoint_id="mid@prov_b")
     assert dec.chosen_candidate.endpoint_id == "mid@prov_b"
-    # Sibling endpoint of mid model should be first in fallback chain
-    assert dec.fallback_chain[0].endpoint_id == "mid@prov_a"
+    assert dec.fallback_chain == []
 
-    # Pin model only
+    # Pin model only -> fallback chain only contains sibling endpoints for the same model
     dec_m = router.route(request=req, strategy_name="manual", pinned_model_id="model_cheap")
     assert dec_m.chosen_candidate.model_id == "model_cheap"
+    assert dec_m.chosen_candidate.endpoint_id == "cheap@prov_a"
+    assert [c.endpoint_id for c in dec_m.fallback_chain] == ["cheap@prov_b"]
 
 
 def test_endpoint_health_cooldown() -> None:
@@ -294,7 +295,7 @@ def test_engine_failover_same_model_first() -> None:
 
 
 def test_engine_failover_model_error_skips_siblings() -> None:
-    """Test that a context length error skips sibling endpoints of the same model."""
+    """Test that a context length error skips sibling endpoints of the same model in auto routing."""
     reg = ModelRegistry()
     reg.add_provider(ProviderConfig(id="prov_a", protocol="mock"))
     reg.add_provider(ProviderConfig(id="prov_b", protocol="mock"))
@@ -310,6 +311,8 @@ def test_engine_failover_model_error_skips_siblings() -> None:
                     provider="prov_a",
                     api_model="m1-a",
                     priority=1,
+                    price_in_per_mtok=0.1,
+                    price_out_per_mtok=0.1,
                     quirks={"simulate_error": "context_length"},  # Context error on m1
                 ),
                 EndpointConfig(
@@ -317,6 +320,8 @@ def test_engine_failover_model_error_skips_siblings() -> None:
                     provider="prov_b",
                     api_model="m1-b",
                     priority=2,
+                    price_in_per_mtok=0.2,
+                    price_out_per_mtok=0.2,
                 ),
             ],
         )
@@ -331,6 +336,8 @@ def test_engine_failover_model_error_skips_siblings() -> None:
                     provider="prov_c",
                     api_model="m2-c",
                     priority=1,
+                    price_in_per_mtok=0.5,
+                    price_out_per_mtok=0.5,
                 )
             ],
         )
@@ -340,7 +347,8 @@ def test_engine_failover_model_error_skips_siblings() -> None:
     engine = ChatEngine(registry=reg, router=router)
     req = ChatRequest(messages=[Message.from_text("user", "Big request")])
 
-    events = list(engine.run_turn(request=req, strategy_name="manual", pinned_model_id="model_1"))
+    # In dynamic cheapest_first, cross-model failover is enabled
+    events = list(engine.run_turn(request=req, strategy_name="cheapest_first"))
 
     # Because context_length skips siblings, m1@prov_b is skipped and m2@prov_c is tried
     fallback_events = [e for e in events if e.type == StreamEventType.FALLBACK]
@@ -350,3 +358,52 @@ def test_engine_failover_model_error_skips_siblings() -> None:
 
     done_ev = next(e for e in events if e.type == StreamEventType.DONE)
     assert done_ev.data["candidate"].endpoint_id == "m2@prov_c"
+
+
+def test_engine_manual_mode_no_cross_model_failover() -> None:
+    """Test that manual routing never falls over to a different model."""
+    reg = ModelRegistry()
+    reg.add_provider(ProviderConfig(id="prov_a", protocol="mock"))
+    reg.add_provider(ProviderConfig(id="prov_b", protocol="mock"))
+
+    reg.add_model(
+        ModelConfig(
+            id="model_1",
+            display_name="Model 1",
+            endpoints=[
+                EndpointConfig(
+                    id="m1@prov_a",
+                    provider="prov_a",
+                    api_model="m1-a",
+                    priority=1,
+                    quirks={"simulate_error": "rate_limit"},
+                ),
+            ],
+        )
+    )
+    reg.add_model(
+        ModelConfig(
+            id="model_2",
+            display_name="Model 2",
+            endpoints=[
+                EndpointConfig(
+                    id="m2@prov_b",
+                    provider="prov_b",
+                    api_model="m2-b",
+                    priority=1,
+                )
+            ],
+        )
+    )
+
+    router = Router(registry=reg)
+    engine = ChatEngine(registry=reg, router=router)
+    req = ChatRequest(messages=[Message.from_text("user", "Hello")])
+
+    events = list(engine.run_turn(request=req, strategy_name="manual", pinned_model_id="model_1"))
+
+    # Should NOT fall back to model_2; should emit error
+    event_types = [e.type for e in events]
+    assert StreamEventType.ERROR in event_types
+    assert StreamEventType.DONE not in event_types
+    assert StreamEventType.FALLBACK not in event_types
