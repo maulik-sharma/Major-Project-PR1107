@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # ModelMesh Workspace Rules
 
 These rules apply to all agent interactions in this repository.

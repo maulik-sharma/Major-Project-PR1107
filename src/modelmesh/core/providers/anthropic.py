@@ -47,23 +47,20 @@ def _get_anthropic_api_key(provider: ProviderConfig) -> str:
 
 def _create_anthropic_client(
     provider: ProviderConfig,
-    http_client: Optional[httpx.Client] = None,
+    http_client: Optional[Any] = None,
 ) -> Anthropic:
     """Instantiate an Anthropic client."""
     api_key = _get_anthropic_api_key(provider)
-    timeout = httpx.Timeout(
-        connect=provider.connect_timeout,
-        read=provider.read_timeout,
-        write=provider.read_timeout,
-        pool=10.0,
-    )
-    client = http_client or httpx.Client(timeout=timeout)
-    return Anthropic(
-        api_key=api_key,
-        base_url=provider.base_url or "https://api.anthropic.com",
-        http_client=client,
-        default_headers=provider.extra_headers or None,
-    )
+    timeout = float(provider.read_timeout)
+    kwargs: Dict[str, Any] = {
+        "api_key": api_key,
+        "base_url": provider.base_url or "https://api.anthropic.com",
+        "timeout": timeout,
+        "default_headers": provider.extra_headers or None,
+    }
+    if http_client is not None:
+        kwargs["http_client"] = http_client
+    return Anthropic(**kwargs)
 
 
 def _convert_messages_to_anthropic(
@@ -158,6 +155,15 @@ def map_anthropic_exception(exc: Exception, provider_id: str) -> ProviderError:
             pass
 
     lower_msg = msg.lower()
+    # Credit balance / quota exhaustion -> RateLimitError (retryable / triggers failover)
+    if "credit balance is too low" in lower_msg or "insufficient_quota" in lower_msg or "out of credits" in lower_msg:
+        return RateLimitError(
+            message=msg,
+            provider_id=provider_id,
+            status_code=status_code or 400,
+            raw_error=exc,
+        )
+
     if (
         "prompt is too long" in lower_msg
         or "maximum context length" in lower_msg

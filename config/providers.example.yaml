@@ -1,5 +1,5 @@
 # ModelMesh Providers and Models Configuration
-# Example configuration file showing multi-provider routing and endpoints
+# Example configuration showing multi-provider routing and endpoints
 
 providers:
   - id: groq
@@ -14,15 +14,28 @@ providers:
     auth_env:
       - OPENROUTER_API_KEY
 
+  - id: gemini
+    protocol: openai_compat
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    auth_env:
+      - GEMINI_API_KEY
+
+  - id: openai
+    protocol: openai_compat
+    base_url: https://api.openai.com/v1
+    auth_env:
+      - OPENAI_API_KEY
+
+  - id: anthropic
+    protocol: anthropic
+    base_url: https://api.anthropic.com
+    auth_env:
+      - ANTHROPIC_API_KEY
+
   - id: ollama
     protocol: openai_compat
     base_url: http://localhost:11434/v1
     auth_env: []
-
-  - id: anthropic
-    protocol: anthropic
-    auth_env:
-      - ANTHROPIC_API_KEY
 
   - id: mock
     protocol: mock
@@ -83,6 +96,28 @@ models:
         api_model: claude-3-5-sonnet-20241022
         price_in_per_mtok: 3.00
         price_out_per_mtok: 15.00
+        priority: 1
+        enabled: true
+
+  # Google Gemini Flash
+  - id: gemini-flash
+    display_name: "Google Gemini Flash Latest"
+    tier: mid
+    context_window: 1000000
+    max_output: 8192
+    capabilities:
+      - streaming
+      - tools
+      - vision
+    local: false
+    enabled: true
+    endpoint_policy: priority
+    endpoints:
+      - id: gemini-flash@gemini
+        provider: gemini
+        api_model: gemini-flash-latest
+        price_in_per_mtok: 0.075
+        price_out_per_mtok: 0.30
         priority: 1
         enabled: true
 

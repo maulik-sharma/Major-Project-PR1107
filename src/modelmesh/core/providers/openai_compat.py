@@ -51,7 +51,7 @@ def _get_api_key(provider: ProviderConfig) -> str:
     return "ollama"
 
 
-def _create_client(provider: ProviderConfig, http_client: Optional[httpx.Client] = None) -> OpenAI:
+def _create_client(provider: ProviderConfig, http_client: Optional[Any] = None) -> OpenAI:
     """Instantiate an OpenAI client configured for the provider."""
     api_key = _get_api_key(provider)
     base_url = provider.base_url or "https://api.openai.com/v1"
@@ -162,6 +162,15 @@ def map_openai_exception(exc: Exception, provider_id: str) -> ProviderError:
             message=msg,
             provider_id=provider_id,
             status_code=status_code or 400,
+            raw_error=exc,
+        )
+
+    # Detect credit exhaustion or insufficient quota
+    if "credit_balance_exhausted" in lower_msg or "insufficient_quota" in lower_msg or "no credits remaining" in lower_msg:
+        return RateLimitError(
+            message=msg,
+            provider_id=provider_id,
+            status_code=status_code or 429,
             raw_error=exc,
         )
 
