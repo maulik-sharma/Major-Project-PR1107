@@ -118,8 +118,20 @@ class Storage:
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
+        db_str = str(self.db_path)
+        if db_str == ":memory:":
+            if not hasattr(self, "_mem_conn") or self._mem_conn is None:
+                self._mem_conn = sqlite3.connect(
+                    "file:memdb_shared?mode=memory&cache=shared",
+                    uri=True,
+                    check_same_thread=False,
+                    timeout=15.0,
+                )
+                self._mem_conn.row_factory = sqlite3.Row
+            return self._mem_conn
+
         conn = sqlite3.connect(
-            str(self.db_path),
+            db_str,
             check_same_thread=False,
             timeout=15.0,
         )

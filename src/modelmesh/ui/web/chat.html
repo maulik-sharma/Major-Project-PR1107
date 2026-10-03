@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ModelMesh Chat</title>
+  <link rel="stylesheet" href="vendor/highlight.min.css" />
+  <link rel="stylesheet" href="chat.css" />
+  <script src="vendor/qwebchannel.js"></script>
+  <script src="vendor/marked.min.js"></script>
+  <script src="vendor/highlight.min.js"></script>
+  <script src="vendor/purify.min.js"></script>
+</head>
+<body class="dark-theme">
+  <div id="chat-wrapper">
+    <div id="empty-state" class="empty-state">
+      <div class="empty-icon">⚡</div>
+      <h2 class="empty-title">ModelMesh Intelligent LLM Router</h2>
+      <p class="empty-subtitle">Unified multi-provider chat with adaptive, cost-aware routing and transparent failover.</p>
+      <div class="empty-suggestions">
+        <div class="suggestion-card" onclick="onSuggestionClick('Explain quantum computing principles simply')">
+          <div class="suggestion-header">💡 Explain concept</div>
+          <div class="suggestion-text">Quantum computing principles simply</div>
+        </div>
+        <div class="suggestion-card" onclick="onSuggestionClick('Write a Python function for binary search with edge cases')">
+          <div class="suggestion-header">💻 Code generator</div>
+          <div class="suggestion-text">Python binary search with edge cases</div>
+        </div>
+        <div class="suggestion-card" onclick="onSuggestionClick('Compare cheapest-first vs random routing tradeoffs')">
+          <div class="suggestion-header">⚖️ Strategy analysis</div>
+          <div class="suggestion-text">Cheapest-first vs random tradeoffs</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="chat-container"></div>
+  </div>
+
+  <script src="chat.js"></script>
+</body>
+</html>
