@@ -83,6 +83,7 @@ class Router:
             pinned_model_id=pinned_model_id,
             pinned_endpoint_id=pinned_endpoint_id,
             seed=seed,
+            rejections=rejections,
             **kwargs,
         )
 

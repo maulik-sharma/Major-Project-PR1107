@@ -29,6 +29,7 @@ class ManualStrategy(Strategy):
 
         pinned_endpoint_id: Optional[str] = kwargs.get("pinned_endpoint_id")
         pinned_model_id: Optional[str] = kwargs.get("pinned_model_id")
+        rejections: Dict[str, str] = kwargs.get("rejections", {})
 
         # Group candidates by model_id
         model_groups: Dict[str, List[Candidate]] = {}
@@ -46,9 +47,11 @@ class ManualStrategy(Strategy):
                 None,
             )
             if not target_cand:
-                raise RoutingError(
-                    f"Pinned endpoint '{pinned_endpoint_id}' is not eligible for this request."
-                )
+                rej_reason = rejections.get(pinned_endpoint_id)
+                msg = f"Pinned endpoint '{pinned_endpoint_id}' is not eligible for this request."
+                if rej_reason:
+                    msg += f" ({rej_reason})"
+                raise RoutingError(msg)
 
             chosen = target_cand
             # In manual pinned endpoint mode, failover to other endpoints/models is disabled
@@ -58,9 +61,15 @@ class ManualStrategy(Strategy):
         elif pinned_model_id:
             # Pinned logical model: allow failover across providers serving the SAME model only
             if pinned_model_id not in model_groups:
-                raise RoutingError(
-                    f"Selected model '{pinned_model_id}' is not eligible for this request."
-                )
+                matching_reasons = [
+                    r for ep, r in rejections.items()
+                    if ep.startswith(f"{pinned_model_id}@") or f"Model '{pinned_model_id}'" in r or f"'{pinned_model_id}'" in r
+                ]
+                rej_reason = matching_reasons[0] if matching_reasons else None
+                msg = f"Selected model '{pinned_model_id}' is not eligible for this request."
+                if rej_reason:
+                    msg += f" ({rej_reason})"
+                raise RoutingError(msg)
 
             target_cands = model_groups[pinned_model_id]
             policy = target_cands[0].model_config.endpoint_policy

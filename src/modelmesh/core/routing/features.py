@@ -88,14 +88,22 @@ def filter_eligible_candidates(
             )
             continue
 
-        # Check health status
-        if health_tracker is not None and not health_tracker.is_healthy(cand.endpoint_id):
-            rejections[cand.endpoint_id] = "Endpoint is temporarily cooling down after failures."
-            continue
+        # Check session blacklist and health status
+        if health_tracker is not None:
+            if health_tracker.is_blacklisted(endpoint_id=cand.endpoint_id, model_id=cand.model_id):
+                reason = health_tracker.get_blacklist_reason(
+                    endpoint_id=cand.endpoint_id, model_id=cand.model_id
+                ) or "Query failed earlier in this session"
+                rejections[cand.endpoint_id] = f"Model '{cand.model_id}' is blacklisted for this session: {reason}"
+                continue
+
+            if not health_tracker.is_healthy(cand.endpoint_id, cand.model_id):
+                rejections[cand.endpoint_id] = "Endpoint is temporarily cooling down after failures."
+                continue
 
         eligible.append(cand)
 
-    # If all otherwise-eligible candidates were rejected solely due to health cooldown,
+    # If all otherwise-eligible candidates were rejected solely due to health cooldown (not blacklisted),
     # recover them so the user isn't completely stranded
     if not eligible and health_tracker is not None:
         health_rejected = [

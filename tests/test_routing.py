@@ -464,3 +464,102 @@ def test_auto_strategy_excludes_mock_when_real_providers_exist(monkeypatch) -> N
     manual_decision = router.route(request=req, strategy_name="manual", pinned_model_id="mock_expensive")
     assert manual_decision.chosen_candidate.model_id == "mock_expensive"
 
+
+def test_session_blacklisting_on_failure_across_all_strategies() -> None:
+    """Verify that when a model query fails, it is blacklisted for the session across all strategies."""
+    reg = ModelRegistry()
+    reg.add_provider(ProviderConfig(id="prov_a", protocol="mock"))
+    reg.add_provider(ProviderConfig(id="prov_b", protocol="mock"))
+
+    # Model 1: Cheap ($0.05) but will fail with simulate_error
+    reg.add_model(
+        ModelConfig(
+            id="failing_cheap_model",
+            display_name="Failing Cheap Model",
+            endpoints=[
+                EndpointConfig(
+                    id="cheap@prov_a",
+                    provider="prov_a",
+                    api_model="cheap-fail",
+                    price_in_per_mtok=0.05,
+                    price_out_per_mtok=0.05,
+                    quirks={"simulate_error": "server_error"},
+                )
+            ],
+        )
+    )
+
+    # Model 2: Mid-tier ($1.00) that succeeds
+    reg.add_model(
+        ModelConfig(
+            id="healthy_mid_model",
+            display_name="Healthy Mid Model",
+            endpoints=[
+                EndpointConfig(
+                    id="mid@prov_b",
+                    provider="prov_b",
+                    api_model="mid-ok",
+                    price_in_per_mtok=1.00,
+                    price_out_per_mtok=1.00,
+                )
+            ],
+        )
+    )
+
+    # Model 3: Expensive ($10.00) that succeeds
+    reg.add_model(
+        ModelConfig(
+            id="healthy_exp_model",
+            display_name="Healthy Expensive Model",
+            endpoints=[
+                EndpointConfig(
+                    id="exp@prov_b",
+                    provider="prov_b",
+                    api_model="exp-ok",
+                    price_in_per_mtok=10.00,
+                    price_out_per_mtok=10.00,
+                )
+            ],
+        )
+    )
+
+    tracker = EndpointHealthTracker(failure_threshold=1)
+    router = Router(registry=reg, health_tracker=tracker)
+    engine = ChatEngine(registry=reg, router=router)
+
+    req = ChatRequest(messages=[Message.from_text("user", "Hello turn 1")])
+
+    # Turn 1: Run with cheapest_first
+    # Initial decision picks failing_cheap_model, which fails and falls back to healthy_mid_model
+    events = list(engine.run_turn(request=req, strategy_name="cheapest_first"))
+    done_ev = next(e for e in events if e.type == StreamEventType.DONE)
+    assert done_ev.data["candidate"].model_id == "healthy_mid_model"
+
+    # Verify that failing_cheap_model and cheap@prov_a are now blacklisted in the session tracker
+    assert tracker.is_blacklisted(endpoint_id="cheap@prov_a", model_id="failing_cheap_model")
+    assert "failing_cheap_model" in tracker.get_blacklisted_models()
+    assert "cheap@prov_a" in tracker.get_blacklisted_endpoints()
+
+    # Turn 2: Test cheapest_first - must pick healthy_mid_model directly without even trying failing_cheap_model
+    req2 = ChatRequest(messages=[Message.from_text("user", "Hello turn 2")])
+    dec_cheap = router.route(request=req2, strategy_name="cheapest_first")
+    assert dec_cheap.chosen_candidate.model_id == "healthy_mid_model"
+    assert all(c.model_id != "failing_cheap_model" for c in dec_cheap.fallback_chain)
+
+    # Turn 3: Test expensive_first - must pick healthy_exp_model, fallback healthy_mid_model (no failing_cheap_model)
+    dec_exp = router.route(request=req2, strategy_name="expensive_first")
+    assert dec_exp.chosen_candidate.model_id == "healthy_exp_model"
+    assert all(c.model_id != "failing_cheap_model" for c in dec_exp.fallback_chain)
+
+    # Turn 4: Test random - uniform random draw only over healthy models
+    for seed in range(5):
+        dec_rand = router.route(request=req2, strategy_name="random", seed=seed)
+        assert dec_rand.chosen_candidate.model_id in ["healthy_mid_model", "healthy_exp_model"]
+        assert all(c.model_id != "failing_cheap_model" for c in dec_rand.fallback_chain)
+
+    # Turn 5: Test manual - attempting to manually route to the blacklisted model must fail with RoutingError
+    with pytest.raises(RoutingError) as exc_info:
+        router.route(request=req2, strategy_name="manual", pinned_model_id="failing_cheap_model")
+    assert "blacklisted for this session" in str(exc_info.value).lower()
+
+

@@ -160,6 +160,13 @@ class ChatEngine:
             except ProviderError as exc:
                 last_error = exc
                 last_failed_cand = cand
+                if self.router is not None and hasattr(self.router, "health_tracker") and self.router.health_tracker:
+                    self.router.health_tracker.record_failure(
+                        endpoint_id=cand.endpoint_id,
+                        model_id=cand.model_id,
+                        reason=str(exc),
+                    )
+
                 # If output already started streaming, do not silently failover
                 if accumulated_text:
                     yield StreamEvent(
@@ -189,6 +196,13 @@ class ChatEngine:
                     raw_error=exc,
                 )
                 last_failed_cand = cand
+                if self.router is not None and hasattr(self.router, "health_tracker") and self.router.health_tracker:
+                    self.router.health_tracker.record_failure(
+                        endpoint_id=cand.endpoint_id,
+                        model_id=cand.model_id,
+                        reason=str(last_error),
+                    )
+
                 if accumulated_text:
                     yield StreamEvent(
                         type=StreamEventType.ERROR,
@@ -213,6 +227,12 @@ class ChatEngine:
                 },
             )
             return
+
+        if self.router is not None and hasattr(self.router, "health_tracker") and self.router.health_tracker:
+            self.router.health_tracker.record_success(
+                endpoint_id=successful_candidate.endpoint_id,
+                model_id=successful_candidate.model_id,
+            )
 
         # Ensure usage is computed
         if final_usage is None:
