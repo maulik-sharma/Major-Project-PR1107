@@ -194,7 +194,7 @@ class ModelsTab(QWidget):
 
         for model in models:
             model_item = QTreeWidgetItem([
-                f"🤖 {model.display_name} ({model.id})",
+                f"{model.display_name} ({model.id})",
                 f"{len(model.endpoints)} endpoints",
                 f"{model.tier} tier",
                 "-",
@@ -213,7 +213,7 @@ class ModelsTab(QWidget):
                     f"${ep.price_in_per_mtok:.4f}",
                     f"${ep.price_out_per_mtok:.4f}",
                     str(ep.priority),
-                    "🟢 Active" if ep.enabled else "⚪ Disabled",
+                    "Active" if ep.enabled else "Disabled",
                 ])
                 ep_item.setData(
                     0,

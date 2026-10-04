@@ -87,24 +87,24 @@ class MainWindow(QMainWindow):
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.toolbar)
 
         # Strategy & Model Selectors
-        self.strategy_label = QLabel(" 🎯 Strategy: ")
-        self.strategy_label.setStyleSheet("font-weight: 600; color: #9da7b3;")
+        self.strategy_label = QLabel("Strategy")
+        self.strategy_label.setStyleSheet("font-weight: 500; color: #a1a1aa; font-size: 12px;")
         self.toolbar.addWidget(self.strategy_label)
 
         self.strategy_combo = QComboBox()
-        self.strategy_combo.setMinimumWidth(190)
+        self.strategy_combo.setMinimumWidth(180)
         self._populate_strategy_combo()
         self.strategy_combo.currentIndexChanged.connect(self._on_strategy_changed)
         self.toolbar.addWidget(self.strategy_combo)
 
         self.toolbar.addSeparator()
 
-        self.model_label = QLabel(" 🤖 Model: ")
-        self.model_label.setStyleSheet("font-weight: 600; color: #9da7b3;")
+        self.model_label = QLabel("Model")
+        self.model_label.setStyleSheet("font-weight: 500; color: #a1a1aa; font-size: 12px;")
         self.toolbar.addWidget(self.model_label)
 
         self.model_combo = QComboBox()
-        self.model_combo.setMinimumWidth(280)
+        self.model_combo.setMinimumWidth(260)
         self._populate_model_combo()
         self.toolbar.addWidget(self.model_combo)
 
@@ -114,14 +114,14 @@ class MainWindow(QMainWindow):
 
         # Parameters button
         self.params_btn = QToolButton()
-        self.params_btn.setText(" ⚙️ Parameters ")
+        self.params_btn.setText("Parameters")
         self.params_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.params_btn.clicked.connect(self._open_parameters_dialog)
         self.toolbar.addWidget(self.params_btn)
 
         # Tools toggle
         self.tools_btn = QToolButton()
-        self.tools_btn.setText(" 🛠️ Tools: Enabled ")
+        self.tools_btn.setText("Tools")
         self.tools_btn.setCheckable(True)
         self.tools_btn.setChecked(True)
         self.tools_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -168,30 +168,30 @@ class MainWindow(QMainWindow):
         # 3. Status Bar
         self.status_bar = QStatusBar(self)
         self.setStatusBar(self.status_bar)
-        self.cost_status_label = QLabel("Session Est. Cost: $0.0000 ")
+        self.cost_status_label = QLabel("Session Cost: $0.0000 ")
         self.status_bar.addPermanentWidget(self.cost_status_label)
-        self.status_bar.showMessage("Ready · ModelMesh Router active")
+        self.status_bar.showMessage("Ready")
 
     def _populate_strategy_combo(self) -> None:
         """Populate the routing strategy selector."""
         self.strategy_combo.clear()
-        self.strategy_combo.addItem("🎯 Auto: Cheapest First", "cheapest_first")
-        self.strategy_combo.addItem("💎 Auto: Expensive First", "expensive_first")
-        self.strategy_combo.addItem("🎲 Auto: Random Baseline", "random")
-        self.strategy_combo.addItem("⚙️ Manual Selection", "manual")
+        self.strategy_combo.addItem("Auto: Cheapest First", "cheapest_first")
+        self.strategy_combo.addItem("Auto: Expensive First", "expensive_first")
+        self.strategy_combo.addItem("Auto: Random Baseline", "random")
+        self.strategy_combo.addItem("Manual Selection", "manual")
 
     def _populate_model_combo(self) -> None:
         """Fill model selector dropdown with available models and endpoints."""
         self.model_combo.clear()
         for model in self.registry.models():
             self.model_combo.addItem(
-                f"🤖 {model.display_name} (Auto Provider)",
+                f"{model.display_name} (Auto Provider)",
                 {"pinned_model_id": model.id},
             )
             if len(model.endpoints) > 1:
                 for ep in model.endpoints:
                     self.model_combo.addItem(
-                        f"   ↳ on {ep.provider} (${ep.price_in_per_mtok:.3f}/Mtok)",
+                        f"   ↳ {ep.provider} (${ep.price_in_per_mtok:.2f}/Mtok)",
                         {
                             "pinned_model_id": model.id,
                             "pinned_endpoint_id": ep.id,
@@ -462,7 +462,7 @@ class MainWindow(QMainWindow):
 
     def _toggle_tools(self) -> None:
         active = self.tools_btn.isChecked()
-        self.tools_btn.setText(f" 🛠️ Tools: {'Enabled' if active else 'Disabled'} ")
+        self.tools_btn.setText(f"Tools: {'Enabled' if active else 'Disabled'}")
 
     def _open_settings_dialog(self) -> None:
         dlg = SettingsDialog(registry=self.registry, parent=self)

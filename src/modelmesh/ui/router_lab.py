@@ -61,8 +61,7 @@ class RouterLabDialog(QDialog):
 
         # Control Row
         btn_row = QHBoxLayout()
-        dry_run_btn = QPushButton("🚀 Run Dry-Run Simulation")
-        dry_run_btn.setStyleSheet("background-color: #3b82f6; color: white; font-weight: 600; padding: 6px 14px;")
+        dry_run_btn = QPushButton("Run Dry-Run Simulation")
         dry_run_btn.clicked.connect(self._run_dry_run)
         btn_row.addWidget(dry_run_btn)
         btn_row.addStretch()

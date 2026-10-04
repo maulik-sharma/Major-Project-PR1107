@@ -71,53 +71,57 @@ class ComposerWidget(QWidget):
         # 1. Attachment chips row (hidden by default)
         self.chips_container = QWidget()
         self.chips_layout = QHBoxLayout(self.chips_container)
-        self.chips_layout.setContentsMargins(0, 0, 0, 0)
+        self.chips_layout.setContentsMargins(4, 0, 4, 4)
         self.chips_layout.setSpacing(6)
         self.chips_layout.addStretch()
         self.chips_container.setVisible(False)
         layout.addWidget(self.chips_container)
 
-        # 2. Main Input Box Card
+        # 2. Main Input Box Card (Capsule layout)
         input_card = QWidget()
         input_card.setObjectName("inputCard")
-        card_layout = QHBoxLayout(input_card)
-        card_layout.setContentsMargins(8, 6, 8, 6)
-        card_layout.setSpacing(8)
+        card_vlayout = QVBoxLayout(input_card)
+        card_vlayout.setContentsMargins(6, 4, 6, 4)
+        card_vlayout.setSpacing(4)
 
-        # Attach button
-        self.attach_btn = QPushButton("📎")
-        self.attach_btn.setObjectName("attachBtn")
-        self.attach_btn.setFixedSize(36, 36)
-        self.attach_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.attach_btn.setToolTip("Attach image or file")
-        self.attach_btn.clicked.connect(self._on_attach_clicked)
-        card_layout.addWidget(self.attach_btn, alignment=Qt.AlignmentFlag.AlignBottom)
-
-        # Text input
+        # Text input on top
         self.text_input = AutoExpandingTextEdit()
+        self.text_input.setPlaceholderText("How can I help you today? (Enter to send, Shift+Enter for newline)")
         self.text_input.send_pressed.connect(self._on_send_clicked)
         self.text_input.textChanged.connect(self._update_token_estimate)
-        card_layout.addWidget(self.text_input, stretch=1)
+        card_vlayout.addWidget(self.text_input)
+
+        # Bottom action bar inside the capsule
+        bottom_bar = QHBoxLayout()
+        bottom_bar.setContentsMargins(2, 0, 2, 2)
+        bottom_bar.setSpacing(8)
+
+        # Attach button (+)
+        self.attach_btn = QPushButton("+")
+        self.attach_btn.setObjectName("attachBtn")
+        self.attach_btn.setFixedSize(28, 28)
+        self.attach_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.attach_btn.setToolTip("Attach file or image")
+        self.attach_btn.clicked.connect(self._on_attach_clicked)
+        bottom_bar.addWidget(self.attach_btn)
+
+        # Token estimate label
+        self.token_caption = QLabel("~0 tokens")
+        self.token_caption.setObjectName("tokenCaption")
+        bottom_bar.addWidget(self.token_caption)
+
+        bottom_bar.addStretch()
 
         # Send / Stop button
         self.action_btn = QPushButton("Send")
         self.action_btn.setObjectName("sendBtn")
-        self.action_btn.setFixedSize(68, 36)
+        self.action_btn.setFixedSize(62, 28)
         self.action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.action_btn.clicked.connect(self._on_action_btn_clicked)
-        card_layout.addWidget(self.action_btn, alignment=Qt.AlignmentFlag.AlignBottom)
+        bottom_bar.addWidget(self.action_btn)
 
+        card_vlayout.addLayout(bottom_bar)
         layout.addWidget(input_card)
-
-        # 3. Bottom caption with token estimate
-        caption_layout = QHBoxLayout()
-        caption_layout.setContentsMargins(4, 0, 4, 0)
-        self.token_caption = QLabel("~0 tokens")
-        self.token_caption.setObjectName("tokenCaption")
-        caption_layout.addWidget(self.token_caption)
-        caption_layout.addStretch()
-
-        layout.addLayout(caption_layout)
 
     def set_streaming_state(self, is_streaming: bool) -> None:
         """Switch action button between Send and Stop."""
@@ -125,7 +129,7 @@ class ComposerWidget(QWidget):
         if is_streaming:
             self.action_btn.setText("Stop")
             self.action_btn.setObjectName("stopBtn")
-            self.action_btn.setStyleSheet("")  # re-apply theme
+            self.action_btn.setStyleSheet("")
         else:
             self.action_btn.setText("Send")
             self.action_btn.setObjectName("sendBtn")
@@ -212,10 +216,10 @@ class ComposerWidget(QWidget):
 
         self.chips_container.setVisible(True)
         for i, att in enumerate(self._attachments):
-            chip = QPushButton(f"📎 {att.get('name', 'File')} ✕")
+            chip = QPushButton(f"{att.get('name', 'File')} ✕")
             chip.setStyleSheet(
-                "background-color: #262c36; color: #3b82f6; border: 1px solid #3b82f6; "
-                "border-radius: 4px; padding: 2px 8px; font-size: 11px;"
+                "background-color: #27272a; color: #f4f4f6; border: 1px solid rgba(255, 255, 255, 0.1); "
+                "border-radius: 6px; padding: 2px 8px; font-size: 11px;"
             )
             chip.setCursor(Qt.CursorShape.PointingHandCursor)
             chip.clicked.connect(lambda _, idx=i: self._remove_attachment(idx))

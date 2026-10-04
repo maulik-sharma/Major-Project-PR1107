@@ -32,19 +32,19 @@ class ToolsTab(QWidget):
 
         layout.addWidget(QLabel("<strong>Built-in Tools</strong>"))
 
-        self.calc_check = QCheckBox("🧮 Calculator (AST math parser)")
+        self.calc_check = QCheckBox("Calculator (AST math parser)")
         self.calc_check.setChecked(True)
         layout.addWidget(self.calc_check)
 
-        self.dt_check = QCheckBox("🕒 Current DateTime")
+        self.dt_check = QCheckBox("Current DateTime")
         self.dt_check.setChecked(True)
         layout.addWidget(self.dt_check)
 
-        self.fetch_check = QCheckBox("🌐 URL Fetcher & Web Reader")
+        self.fetch_check = QCheckBox("URL Fetcher & Web Reader")
         self.fetch_check.setChecked(True)
         layout.addWidget(self.fetch_check)
 
-        self.file_check = QCheckBox("📁 Local Workspace File Reader")
+        self.file_check = QCheckBox("Local Workspace File Reader")
         self.file_check.setChecked(True)
         layout.addWidget(self.file_check)
 

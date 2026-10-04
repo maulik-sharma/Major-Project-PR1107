@@ -37,7 +37,10 @@ class UsageDialog(QDialog):
 
         # Header Summary Cards
         summary_card = QWidget()
-        summary_card.setStyleSheet("background-color: #1f2329; border: 1px solid #2e343d; border-radius: 8px; padding: 12px;")
+        summary_card.setStyleSheet(
+            "background-color: #18181b; border: 1px solid rgba(255, 255, 255, 0.08); "
+            "border-radius: 10px; padding: 14px;"
+        )
         summary_layout = QHBoxLayout(summary_card)
 
         self.reqs_label = QLabel("<strong>Requests:</strong> 0")
@@ -66,7 +69,7 @@ class UsageDialog(QDialog):
 
         # Bottom Buttons
         btn_row = QHBoxLayout()
-        refresh_btn = QPushButton("🔄 Refresh")
+        refresh_btn = QPushButton("Refresh")
         refresh_btn.clicked.connect(self.refresh)
         btn_row.addWidget(refresh_btn)
         btn_row.addStretch()

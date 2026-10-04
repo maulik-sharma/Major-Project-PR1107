@@ -44,20 +44,20 @@ class SettingsDialog(QDialog):
 
         self.providers_tab = ProvidersTab(registry=self.registry, parent=self)
         self.providers_tab.config_changed.connect(self._on_tab_config_changed)
-        self.tabs.addTab(self.providers_tab, "⚡ Providers")
+        self.tabs.addTab(self.providers_tab, "Providers")
 
         self.models_tab = ModelsTab(registry=self.registry, parent=self)
         self.models_tab.config_changed.connect(self._on_tab_config_changed)
-        self.tabs.addTab(self.models_tab, "🤖 Models & Endpoints")
+        self.tabs.addTab(self.models_tab, "Models & Endpoints")
 
         self.routing_tab = RoutingTab(parent=self)
-        self.tabs.addTab(self.routing_tab, "🎯 Routing")
+        self.tabs.addTab(self.routing_tab, "Routing")
 
         self.tools_tab = ToolsTab(parent=self)
-        self.tabs.addTab(self.tools_tab, "🛠️ Tools")
+        self.tabs.addTab(self.tools_tab, "Tools")
 
         self.appearance_tab = AppearanceTab(parent=self)
-        self.tabs.addTab(self.appearance_tab, "🎨 Appearance")
+        self.tabs.addTab(self.appearance_tab, "Appearance")
 
         layout.addWidget(self.tabs)
 

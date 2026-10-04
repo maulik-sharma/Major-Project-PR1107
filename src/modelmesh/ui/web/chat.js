@@ -169,18 +169,19 @@ function start_assistant_message(msgId, modelName = '', providerName = '', strat
   row.className = 'message-row assistant-row';
   row.id = `msg-${msgId}`;
 
-  // Reasoning / Thinking Box
-  const thinkingBox = document.createElement('div');
-  thinkingBox.className = 'thinking-box';
-  thinkingBox.id = `thinking-${msgId}`;
-  thinkingBox.style.display = 'none';
-  thinkingBox.innerHTML = `
-    <div class="thinking-header" onclick="toggleThinking('${msgId}')">
-      <span>💭 Thinking Process</span>
+  // Thought Process Disclosure (Claude-like minimal disclosure)
+  const thoughtBox = document.createElement('div');
+  thoughtBox.className = 'thought-box';
+  thoughtBox.id = `thinking-${msgId}`;
+  thoughtBox.style.display = 'none';
+  thoughtBox.innerHTML = `
+    <div class="thought-summary" onclick="toggleThinking('${msgId}')">
+      <span class="thought-chevron">›</span>
+      <span>Thought process</span>
     </div>
-    <div class="thinking-content" id="thinking-content-${msgId}"></div>
+    <div class="thought-content" id="thinking-content-${msgId}"></div>
   `;
-  row.appendChild(thinkingBox);
+  row.appendChild(thoughtBox);
 
   // Content Area
   const content = document.createElement('div');
@@ -194,14 +195,14 @@ function start_assistant_message(msgId, modelName = '', providerName = '', strat
   footer.className = 'meta-footer';
   footer.id = `meta-${msgId}`;
 
-  let chips = '';
-  if (modelName) chips += `<span class="chip chip-model">🤖 ${modelName}</span>`;
-  if (providerName) chips += `<span class="chip chip-provider">⚡ ${providerName}</span>`;
+  let items = [];
+  if (modelName) items.push(`<span>${modelName}</span>`);
+  if (providerName) items.push(`<span>${providerName}</span>`);
   if (strategyName) {
     const tooltip = reason ? ` title="${reason.replace(/"/g, '&quot;')}"` : '';
-    chips += `<span class="chip chip-strategy"${tooltip}>🎯 ${strategyName}</span>`;
+    items.push(`<span${tooltip}>${strategyName}</span>`);
   }
-  footer.innerHTML = chips;
+  footer.innerHTML = items.join('<span class="meta-separator">·</span>');
   row.appendChild(footer);
 
   container.appendChild(row);
@@ -209,9 +210,9 @@ function start_assistant_message(msgId, modelName = '', providerName = '', strat
 }
 
 function toggleThinking(msgId) {
-  const content = document.getElementById(`thinking-content-${msgId}`);
-  if (content) {
-    content.style.display = content.style.display === 'none' ? 'block' : 'none';
+  const box = document.getElementById(`thinking-${msgId}`);
+  if (box) {
+    box.classList.toggle('open');
   }
 }
 
@@ -259,11 +260,8 @@ function show_fallback_notice(fromCandId, toCandId, reason = '') {
   const banner = document.createElement('div');
   banner.className = 'fallback-banner';
   banner.innerHTML = `
-    <span class="fallback-icon">⚡</span>
-    <div>
-      <strong>Failover:</strong> Endpoint <code>${fromCandId}</code> failed → Seamlessly falling back to <code>${toCandId}</code>
-      ${reason ? `<div style="font-size:11px;opacity:0.85;margin-top:2px;">Reason: ${reason}</div>` : ''}
-    </div>
+    <span class="fallback-tag">Failover</span>
+    <span>Switched from <code>${fromCandId}</code> to <code>${toCandId}</code>${reason ? ` (${reason})` : ''}</span>
   `;
   container.appendChild(banner);
   scrollToBottom(true);
@@ -281,8 +279,8 @@ function add_tool_card(msgId, toolId, toolName, argsJson = '{}') {
   card.id = `tool-${toolId}`;
   card.innerHTML = `
     <div class="tool-header">
-      <span>🛠️ Tool Call: <strong>${toolName}</strong></span>
-      <span style="font-size:11px;opacity:0.8;">Running...</span>
+      <span>Tool Call: <strong>${toolName}</strong></span>
+      <span style="font-size:11px;opacity:0.7;">Executed</span>
     </div>
     <div class="tool-body">${argsJson}</div>
   `;
@@ -297,7 +295,7 @@ function add_tool_card(msgId, toolId, toolName, argsJson = '{}') {
 }
 
 /**
- * Finish Assistant Message & Finalize Chips
+ * Finish Assistant Message & Finalize Metadata
  */
 function finish_assistant_message(msgId, meta = {}) {
   const buf = messageBuffers[msgId];
@@ -313,33 +311,37 @@ function finish_assistant_message(msgId, meta = {}) {
 
   const footer = document.getElementById(`meta-${msgId}`);
   if (footer) {
-    let chips = '';
+    let items = [];
     const model = meta.model_id || meta.model_name || '';
     const prov = meta.provider_id || meta.provider_name || '';
     const strat = meta.strategy || meta.strategy_name || '';
     const reason = meta.reason || '';
 
-    if (model) chips += `<span class="chip chip-model">🤖 ${model}</span>`;
-    if (prov) chips += `<span class="chip chip-provider">⚡ ${prov}</span>`;
+    if (model) items.push(`<span>${model}</span>`);
+    if (prov) items.push(`<span>${prov}</span>`);
     if (strat) {
       const tooltip = reason ? ` title="${reason.replace(/"/g, '&quot;')}"` : '';
-      chips += `<span class="chip chip-strategy"${tooltip}>🎯 ${strat}</span>`;
+      items.push(`<span${tooltip}>${strat}</span>`);
     }
 
-    if (meta.tokens_in !== undefined && meta.tokens_out !== undefined) {
-      chips += `<span class="chip">📊 ${meta.tokens_in} in / ${meta.tokens_out} out</span>`;
-    }
-    if (meta.cost_usd !== undefined) {
-      chips += `<span class="chip chip-cost">💰 $${Number(meta.cost_usd).toFixed(5)} est.</span>`;
-    }
     if (meta.latency_sec !== undefined) {
-      chips += `<span class="chip">⏱️ ${Number(meta.latency_sec).toFixed(2)}s</span>`;
+      items.push(`<span>${Number(meta.latency_sec).toFixed(2)}s</span>`);
+    }
+    if (meta.cost_usd !== undefined && Number(meta.cost_usd) > 0) {
+      items.push(`<span>$${Number(meta.cost_usd).toFixed(5)}</span>`);
+    }
+    if (meta.tokens_in !== undefined && meta.tokens_out !== undefined) {
+      items.push(`<span>${meta.tokens_in} in / ${meta.tokens_out} out</span>`);
     }
 
-    chips += `<button class="action-btn" onclick="copyMessageText('${msgId}')" title="Copy reply">📋 Copy</button>`;
-    chips += `<button class="action-btn" onclick="regenerateMessage('${msgId}')" title="Regenerate reply">🔄 Regenerate</button>`;
+    let metaHtml = items.join('<span class="meta-separator">·</span>');
+    metaHtml += `
+      <span class="meta-separator" style="margin: 0 4px;"></span>
+      <button class="action-btn" onclick="copyMessageText('${msgId}')" title="Copy reply">Copy</button>
+      <button class="action-btn" onclick="regenerateMessage('${msgId}')" title="Retry generation">Retry</button>
+    `;
 
-    footer.innerHTML = chips;
+    footer.innerHTML = metaHtml;
   }
 
   scrollToBottom(false);
@@ -367,7 +369,7 @@ function set_error(msgId, errorMsg, category = 'unknown') {
   const errorBanner = document.createElement('div');
   errorBanner.className = 'error-banner';
   errorBanner.innerHTML = `
-    <div class="error-title">⚠️ Error (${category})</div>
+    <div style="font-weight:600;margin-bottom:2px;">Error (${category})</div>
     <div>${errorMsg}</div>
   `;
   row.appendChild(errorBanner);

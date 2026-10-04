@@ -194,9 +194,9 @@ class ProvidersTab(QWidget):
 
         # Actions row
         actions_row = QHBoxLayout()
-        self.test_btn = QPushButton("🔍 Test Connection")
+        self.test_btn = QPushButton("Test Connection")
         self.test_btn.clicked.connect(self._on_test_connection)
-        self.fetch_btn = QPushButton("📥 Fetch Models")
+        self.fetch_btn = QPushButton("Fetch Models")
         self.fetch_btn.clicked.connect(self._on_fetch_models)
         actions_row.addWidget(self.test_btn)
         actions_row.addWidget(self.fetch_btn)
@@ -215,7 +215,7 @@ class ProvidersTab(QWidget):
         self.provider_list.clear()
         providers = self.registry.providers()
         for p in providers:
-            item = QListWidgetItem(f"⚡ {p.id} ({p.protocol})")
+            item = QListWidgetItem(f"{p.id} ({p.protocol})")
             item.setData(Qt.ItemDataRole.UserRole, p.id)
             self.provider_list.addItem(item)
 

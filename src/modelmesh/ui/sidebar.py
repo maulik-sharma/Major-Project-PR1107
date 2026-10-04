@@ -47,20 +47,17 @@ class SidebarWidget(QWidget):
         header_widget = QWidget()
         header_widget.setObjectName("sidebarHeader")
         header_layout = QVBoxLayout(header_widget)
-        header_layout.setContentsMargins(12, 12, 12, 8)
+        header_layout.setContentsMargins(14, 14, 14, 8)
         header_layout.setSpacing(10)
 
         brand_layout = QHBoxLayout()
-        brand_icon = QLabel("⚡")
-        brand_icon.setStyleSheet("font-size: 16px;")
         brand_title = QLabel("ModelMesh")
         brand_title.setObjectName("brandTitle")
-        brand_layout.addWidget(brand_icon)
         brand_layout.addWidget(brand_title)
         brand_layout.addStretch()
         header_layout.addLayout(brand_layout)
 
-        new_chat_btn = QPushButton("+ New Chat")
+        new_chat_btn = QPushButton("+ New chat")
         new_chat_btn.setObjectName("newChatBtn")
         new_chat_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         new_chat_btn.clicked.connect(self.new_chat_requested)
@@ -73,11 +70,16 @@ class SidebarWidget(QWidget):
         # Search box
         self.search_box = QLineEdit()
         self.search_box.setObjectName("searchBox")
-        self.search_box.setPlaceholderText("🔍 Search chats...")
+        self.search_box.setPlaceholderText("Search chats...")
         self.search_box.textChanged.connect(self._filter_conversations)
         header_layout.addWidget(self.search_box)
 
         layout.addWidget(header_widget)
+
+        # Section Header
+        section_label = QLabel("Recent")
+        section_label.setObjectName("sidebarSectionLabel")
+        layout.addWidget(section_label)
 
         # 2. Conversation List
         self.conv_list = QListWidget()
@@ -92,21 +94,21 @@ class SidebarWidget(QWidget):
         footer_widget.setObjectName("sidebarFooter")
         footer_layout = QVBoxLayout(footer_widget)
         footer_layout.setContentsMargins(8, 8, 8, 8)
-        footer_layout.setSpacing(4)
+        footer_layout.setSpacing(2)
 
-        usage_btn = QPushButton("📊 Usage Dashboard")
+        usage_btn = QPushButton("Usage Dashboard")
         usage_btn.setProperty("class", "sidebarActionBtn")
         usage_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         usage_btn.clicked.connect(self.usage_requested)
         footer_layout.addWidget(usage_btn)
 
-        lab_btn = QPushButton("🧪 Router Lab")
+        lab_btn = QPushButton("Router Lab")
         lab_btn.setProperty("class", "sidebarActionBtn")
         lab_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         lab_btn.clicked.connect(self.router_lab_requested)
         footer_layout.addWidget(lab_btn)
 
-        settings_btn = QPushButton("⚙️ Settings")
+        settings_btn = QPushButton("Settings")
         settings_btn.setProperty("class", "sidebarActionBtn")
         settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         settings_btn.clicked.connect(self.settings_requested)
@@ -137,7 +139,7 @@ class SidebarWidget(QWidget):
             if query_lower and query_lower not in title.lower():
                 continue
 
-            item = QListWidgetItem(f"💬 {title}")
+            item = QListWidgetItem(title)
             item.setData(Qt.ItemDataRole.UserRole, conv.get("id"))
             item.setToolTip(f"Created: {conv.get('created', '')}\nID: {conv.get('id', '')}")
             self.conv_list.addItem(item)
@@ -164,11 +166,11 @@ class SidebarWidget(QWidget):
             return
 
         conv_id = item.data(Qt.ItemDataRole.UserRole)
-        current_title = item.text().replace("💬 ", "")
+        current_title = item.text()
 
         menu = QMenu(self)
-        rename_action = QAction("✏️ Rename", self)
-        delete_action = QAction("🗑️ Delete", self)
+        rename_action = QAction("Rename", self)
+        delete_action = QAction("Delete", self)
 
         rename_action.triggered.connect(lambda: self._prompt_rename(conv_id, current_title))
         delete_action.triggered.connect(lambda: self._prompt_delete(conv_id))
