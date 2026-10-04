@@ -132,38 +132,38 @@ QToolButton:checked {
 }
 
 #sidebarFooter {
-    background-color: #141417;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-    padding: 10px 12px;
+    background-color: transparent;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 8px 10px;
 }
 
-.sidebarActionBtn {
+#sidebarFooter QPushButton, .sidebarActionBtn {
     background-color: transparent;
     border: none;
     border-radius: 6px;
     color: #a1a1aa;
-    padding: 6px 8px;
+    padding: 6px 10px;
     text-align: left;
     font-size: 12.5px;
     font-weight: 400;
 }
 
-.sidebarActionBtn:hover {
-    background-color: rgba(255, 255, 255, 0.05);
+#sidebarFooter QPushButton:hover, .sidebarActionBtn:hover {
+    background-color: rgba(255, 255, 255, 0.06);
     color: #ffffff;
 }
 
-/* User Profile Row in Sidebar Footer */
-#sidebarUserProfile {
-    padding: 6px 4px;
+#sidebarFooter QPushButton:pressed, .sidebarActionBtn:pressed {
+    background-color: rgba(255, 255, 255, 0.03);
 }
 
-#userAvatarBadge {
-    background-color: #27272a;
-    color: #e4e4e7;
-    border-radius: 12px;
-    font-weight: 600;
-    font-size: 11px;
+/* Chat Container */
+#chatContainer {
+    background-color: #141417;
+}
+
+#mainSplitter {
+    background-color: #141417;
 }
 
 /* Composer Panel */

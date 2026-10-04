@@ -67,6 +67,7 @@ class ChatView(QWebEngineView):
         self._page = CustomWebEnginePage(self)
         self.setPage(self._page)
         self.page().setBackgroundColor(QColor("#141417"))
+        self.setStyleSheet("background-color: #141417; border: none;")
 
         self.bridge = ChatBridge()
         self.bridge.regenerate_requested.connect(self.regenerate_requested)

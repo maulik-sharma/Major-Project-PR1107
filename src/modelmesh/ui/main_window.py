@@ -131,6 +131,7 @@ class MainWindow(QMainWindow):
 
         # 2. Main Layout Splitter
         main_splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        main_splitter.setObjectName("mainSplitter")
 
         # Left Sidebar
         self.sidebar = SidebarWidget(self)
@@ -145,6 +146,7 @@ class MainWindow(QMainWindow):
 
         # Right Chat Area
         chat_container = QWidget()
+        chat_container.setObjectName("chatContainer")
         chat_layout = QVBoxLayout(chat_container)
         chat_layout.setContentsMargins(0, 0, 0, 0)
         chat_layout.setSpacing(0)
@@ -486,8 +488,9 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage("Updated generation parameters.")
 
     def _toggle_tools(self) -> None:
-        active = self.tools_btn.isChecked()
-        self.tools_btn.setText(f"Tools: {'Enabled' if active else 'Disabled'}")
+        pass
+        # active = self.tools_btn.isChecked()
+        # self.tools_btn.setText(f"Tools: {'Enabled' if active else 'Disabled'}")
 
     def _open_settings_dialog(self) -> None:
         dlg = SettingsDialog(registry=self.registry, parent=self)
