@@ -168,6 +168,20 @@ class ChatView(QWebEngineView):
         args_json = json.dumps(arguments, indent=2)
         self._run_js("add_tool_card", msg_id, tool_id, tool_name, args_json)
 
+    def update_tool_result(
+        self,
+        msg_id: str,
+        tool_id: str,
+        tool_name: str,
+        result: Any,
+        error: Optional[str] = None,
+        success: bool = True,
+        duration_ms: int = 0,
+    ) -> None:
+        """Update tool card with execution outcome and duration."""
+        res_str = json.dumps(result, indent=2) if isinstance(result, (dict, list)) else str(result or "")
+        self._run_js("update_tool_result", msg_id, tool_id, tool_name, res_str, error or "", success, duration_ms)
+
     def finish_assistant_message(self, msg_id: str, meta: Dict[str, Any]) -> None:
         """Flush remaining deltas and finalize message chips."""
         self._flush_stream_buffers()

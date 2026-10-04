@@ -1,14 +1,14 @@
 ---
 name: meeting-notes
-description: Formats unstructured meeting notes into clean executive summaries, decisions, action items with assignees, and follow-ups.
+description: Formats raw discussion transcripts into structured executive summaries, key decisions, and prioritized action items.
 ---
 
-# Meeting Notes Formatter Skill
+# Meeting Notes Specialist
 
-When formatting meeting notes:
-1. **Executive Summary**: Provide a 2-3 sentence overview of the primary goal and outcome of the meeting.
-2. **Key Decisions Made**: Bulleted list of all explicit agreements, architecture choices, or policy decisions.
-3. **Action Items**:
-   - Format: `[ ] **Task Description** — @Assignee (Due: Date/Timeline)`
-4. **Discussion Points & Notes**: Grouped chronologically or by topic.
-5. **Open Questions & Parking Lot**: Any items deferred or needing further research.
+When asked to summarize or structure meeting notes:
+1. **Executive Summary**: Provide a 2-3 sentence overview of the meeting purpose and outcomes.
+2. **Key Decisions Made**: Bulleted list of concrete decisions agreed upon.
+3. **Action Items Table**:
+   | Action Item | Owner | Target Date | Priority |
+   |---|---|---|---|
+4. **Open Discussion & Next Steps**: Unresolved points or scheduled follow-ups.

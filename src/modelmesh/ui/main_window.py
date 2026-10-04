@@ -122,7 +122,7 @@ class MainWindow(QMainWindow):
 
         # Tools toggle
         self.tools_btn = QToolButton()
-        self.tools_btn.setText("Tools")
+        self.tools_btn.setText("Tools: On")
         self.tools_btn.setCheckable(True)
         self.tools_btn.setChecked(True)
         self.tools_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -330,9 +330,16 @@ class MainWindow(QMainWindow):
         # Build full conversation request from storage
         req_messages = self.storage.get_messages(conv_id)
 
+        tools_to_pass = (
+            self.engine.tool_registry.get_tool_specs()
+            if (self.tools_btn.isChecked() and self.engine.tool_registry is not None)
+            else []
+        )
+
         request = ChatRequest(
             messages=req_messages,
             system_prompt=self.generation_settings.get("system_prompt"),
+            tools=tools_to_pass,
             temperature=self.generation_settings.get("temperature"),
             max_tokens=self.generation_settings.get("max_tokens"),
         )
@@ -371,6 +378,8 @@ class MainWindow(QMainWindow):
         self.current_worker.text_delta.connect(self._on_worker_text_delta)
         self.current_worker.reasoning_delta.connect(self._on_worker_reasoning_delta)
         self.current_worker.tool_call.connect(self._on_worker_tool_call)
+        self.current_worker.tool_start.connect(self._on_worker_tool_start)
+        self.current_worker.tool_result.connect(self._on_worker_tool_result)
         self.current_worker.finished_turn.connect(self._on_worker_finished)
         self.current_worker.error_occurred.connect(self._on_worker_error)
         self.current_worker.start()
@@ -410,6 +419,28 @@ class MainWindow(QMainWindow):
             data.get("name", ""),
             data.get("arguments", {}),
         )
+
+    def _on_worker_tool_start(self, data: Dict[str, Any]) -> None:
+        self.chat_view.add_tool_card(
+            self.current_assistant_msg_id,
+            data.get("id", ""),
+            data.get("name", ""),
+            data.get("arguments", {}),
+        )
+        self.status_bar.showMessage(f"Executing tool '{data.get('name')}'...")
+
+    def _on_worker_tool_result(self, data: Dict[str, Any]) -> None:
+        self.chat_view.update_tool_result(
+            self.current_assistant_msg_id,
+            data.get("id", ""),
+            data.get("name", ""),
+            data.get("result"),
+            data.get("error"),
+            data.get("success", True),
+            data.get("duration_ms", 0),
+        )
+        status_text = "succeeded" if data.get("success") else "failed"
+        self.status_bar.showMessage(f"Tool '{data.get('name')}' {status_text} ({data.get('duration_ms', 0)}ms)")
 
     def _on_worker_finished(self, data: Dict[str, Any]) -> None:
         self.composer.set_streaming_state(False)
@@ -488,9 +519,9 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage("Updated generation parameters.")
 
     def _toggle_tools(self) -> None:
-        pass
-        # active = self.tools_btn.isChecked()
-        # self.tools_btn.setText(f"Tools: {'Enabled' if active else 'Disabled'}")
+        active = self.tools_btn.isChecked()
+        self.tools_btn.setText(f"Tools: {'On' if active else 'Off'}")
+        self.status_bar.showMessage(f"Tools {'enabled' if active else 'disabled'}.")
 
     def _open_settings_dialog(self) -> None:
         dlg = SettingsDialog(registry=self.registry, parent=self)

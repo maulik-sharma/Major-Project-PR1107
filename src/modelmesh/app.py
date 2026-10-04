@@ -18,7 +18,9 @@ from modelmesh.core.engine import ChatEngine
 from modelmesh.core.keys import load_env
 from modelmesh.core.registry import load_default_registry
 from modelmesh.core.routing.router import Router
+from modelmesh.core.skills import SkillLoader
 from modelmesh.core.storage import Storage
+from modelmesh.core.tools.builtin import create_builtin_registry
 from modelmesh.ui.main_window import MainWindow
 from modelmesh.ui.theme import apply_theme
 
@@ -62,7 +64,15 @@ def main() -> None:
     db_path = get_db_path()
     storage = Storage(db_path=db_path)
     router = Router(registry=registry)
-    engine = ChatEngine(registry=registry, router=router, storage=storage)
+    tool_registry = create_builtin_registry()
+    skill_loader = SkillLoader(skills_dir=Path.cwd() / "skills")
+    engine = ChatEngine(
+        registry=registry,
+        router=router,
+        storage=storage,
+        tool_registry=tool_registry,
+        skill_loader=skill_loader,
+    )
 
     # Initialize and Show Main Window
     window = MainWindow(

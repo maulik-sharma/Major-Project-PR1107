@@ -1,4 +1,4 @@
-"""Composer widget providing multiline input, attachments, and Send/Stop controls."""
+"""Composer widget providing multiline input, attachments, drag-drop, and Send/Stop controls."""
 
 from __future__ import annotations
 
@@ -6,30 +6,35 @@ import base64
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QKeyEvent
+from PyQt6.QtCore import QBuffer, QByteArray, QIODevice, QMimeData, Qt, pyqtSignal
+from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QImage, QKeyEvent
 from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QScrollArea,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
+from modelmesh.core.attachments import process_attachment
+from modelmesh.core.types import ImagePart, TextPart
+
 
 class AutoExpandingTextEdit(QTextEdit):
-    """TextEdit that emits send signal on Enter and expands height with content."""
+    """TextEdit that emits send signal on Enter, expands height, and handles clipboard image pastes."""
 
     send_pressed = pyqtSignal()
+    attachment_pasted = pyqtSignal(dict)
+    files_dropped = pyqtSignal(list)
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.setObjectName("messageInput")
         self.setPlaceholderText("Message ModelMesh... (Enter to send, Shift+Enter for newline)")
         self.setAcceptRichText(False)
+        self.setAcceptDrops(True)
         self.textChanged.connect(self._adjust_height)
         self.setFixedHeight(42)
 
@@ -44,6 +49,59 @@ class AutoExpandingTextEdit(QTextEdit):
                     e.accept()
                     return
         super().keyPressEvent(e)
+
+    def insertFromMimeData(self, source: QMimeData | None) -> None:
+        """Handle pasted images or dropped files from clipboard."""
+        if source is None:
+            return
+
+        if source.hasImage():
+            img_data = source.imageData()
+            if isinstance(img_data, QImage) and not img_data.isNull():
+                byte_array = QByteArray()
+                buf = QBuffer(byte_array)
+                buf.open(QIODevice.OpenModeFlag.WriteOnly)
+                img_data.save(buf, "PNG")
+                b64 = base64.b64encode(byte_array.data()).decode("utf-8")
+                att = {
+                    "type": "image",
+                    "name": "Pasted Image.png",
+                    "media_type": "image/png",
+                    "data": b64,
+                }
+                self.attachment_pasted.emit(att)
+                return
+
+        if source.hasUrls():
+            paths = [
+                Path(url.toLocalFile())
+                for url in source.urls()
+                if url.isLocalFile()
+            ]
+            if paths:
+                self.files_dropped.emit(paths)
+                return
+
+        super().insertFromMimeData(source)
+
+    def dragEnterEvent(self, event: QDragEnterEvent | None) -> None:
+        if event is not None and (event.mimeData().hasUrls() or event.mimeData().hasImage()):
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dropEvent(self, event: QDropEvent | None) -> None:
+        if event is not None and event.mimeData().hasUrls():
+            paths = [
+                Path(url.toLocalFile())
+                for url in event.mimeData().urls()
+                if url.isLocalFile()
+            ]
+            if paths:
+                self.files_dropped.emit(paths)
+                event.acceptProposedAction()
+                return
+        super().dropEvent(event)
 
     def _adjust_height(self) -> None:
         doc_height = int(self.document().size().height())
@@ -60,6 +118,7 @@ class ComposerWidget(QWidget):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.setObjectName("composerWidget")
+        self.setAcceptDrops(True)
 
         self._attachments: List[Dict[str, Any]] = []
         self._is_streaming = False
@@ -88,6 +147,8 @@ class ComposerWidget(QWidget):
         self.text_input = AutoExpandingTextEdit()
         self.text_input.setPlaceholderText("How can I help you today? (Enter to send, Shift+Enter for newline)")
         self.text_input.send_pressed.connect(self._on_send_clicked)
+        self.text_input.attachment_pasted.connect(self._add_attachment_dict)
+        self.text_input.files_dropped.connect(self._on_files_dropped)
         self.text_input.textChanged.connect(self._update_token_estimate)
         card_vlayout.addWidget(self.text_input)
 
@@ -122,6 +183,28 @@ class ComposerWidget(QWidget):
 
         card_vlayout.addLayout(bottom_bar)
         layout.addWidget(input_card)
+
+    def dragEnterEvent(self, event: QDragEnterEvent | None) -> None:
+        if event is not None and event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dropEvent(self, event: QDropEvent | None) -> None:
+        if event is not None and event.mimeData().hasUrls():
+            paths = [
+                Path(url.toLocalFile())
+                for url in event.mimeData().urls()
+                if url.isLocalFile()
+            ]
+            self._on_files_dropped(paths)
+            event.acceptProposedAction()
+        else:
+            super().dropEvent(event)
+
+    def _on_files_dropped(self, paths: List[Path]) -> None:
+        for p in paths:
+            self._add_attachment(p)
 
     def set_streaming_state(self, is_streaming: bool) -> None:
         """Switch action button between Send and Stop."""
@@ -171,40 +254,33 @@ class ComposerWidget(QWidget):
         if not path.exists():
             return
 
-        ext = path.suffix.lower()
-        if ext in (".png", ".jpg", ".jpeg", ".webp"):
-            # Image Part
-            try:
-                data_b64 = base64.b64encode(path.read_bytes()).decode("utf-8")
-                mime = "image/png" if ext == ".png" else "image/jpeg"
+        try:
+            part = process_attachment(path)
+            if isinstance(part, ImagePart):
                 att = {
                     "type": "image",
                     "name": path.name,
-                    "media_type": mime,
-                    "data": data_b64,
+                    "media_type": part.media_type,
+                    "data": part.data,
                 }
-                self._attachments.append(att)
-                self._render_chips()
-            except Exception:
-                pass
-        else:
-            # Text / Doc Part
-            try:
-                text_content = path.read_text(encoding="utf-8", errors="replace")[:100000]
+            elif isinstance(part, TextPart):
                 att = {
                     "type": "text",
                     "name": path.name,
-                    "text": text_content,
+                    "text": part.text,
                 }
-                self._attachments.append(att)
-                self._render_chips()
-            except Exception:
-                pass
+            else:
+                return
+            self._add_attachment_dict(att)
+        except Exception:
+            pass
 
+    def _add_attachment_dict(self, att: Dict[str, Any]) -> None:
+        self._attachments.append(att)
+        self._render_chips()
         self._update_token_estimate()
 
     def _render_chips(self) -> None:
-        # Clear existing items except stretch
         while self.chips_layout.count() > 1:
             item = self.chips_layout.takeAt(0)
             if item.widget():
@@ -247,3 +323,4 @@ class ComposerWidget(QWidget):
                 est += len(att.get("text", "")) // 4
 
         self.token_caption.setText(f"~{est} estimated tokens · {char_count} chars")
+

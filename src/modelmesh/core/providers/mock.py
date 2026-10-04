@@ -55,7 +55,9 @@ class MockAdapter(ProviderAdapter):
 
         # Check if any tool calls should be simulated
         simulated_tool = quirks.get("simulate_tool_call")
-        if simulated_tool and request.tools:
+        infinite_tools = quirks.get("simulate_infinite_tool_calls", False)
+        has_tool_result = any(msg.role == "tool" for msg in request.messages)
+        if simulated_tool and request.tools and (not has_tool_result or infinite_tools):
             # Emit tool call event
             yield StreamEvent(
                 type=StreamEventType.TOOL_CALL,

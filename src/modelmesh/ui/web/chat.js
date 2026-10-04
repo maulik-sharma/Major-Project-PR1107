@@ -355,24 +355,67 @@ function add_tool_card(msgId, toolId, toolName, argsJson = '{}') {
   const row = document.getElementById(`msg-${msgId}`);
   if (!row) return;
 
-  const card = document.createElement('div');
-  card.className = 'tool-card';
-  card.id = `tool-${toolId}`;
-  card.innerHTML = `
-    <div class="tool-header">
-      <span>Tool Call: <strong>${toolName}</strong></span>
-      <span style="font-size:11px;opacity:0.7;">Executed</span>
-    </div>
-    <div class="tool-body">${argsJson}</div>
-  `;
+  let card = document.getElementById(`tool-${toolId}`);
+  if (!card) {
+    card = document.createElement('div');
+    card.className = 'tool-card open';
+    card.id = `tool-${toolId}`;
 
-  const contentEl = document.getElementById(`content-${msgId}`);
-  if (contentEl) {
-    row.insertBefore(card, contentEl);
-  } else {
-    row.appendChild(card);
+    const contentEl = document.getElementById(`content-${msgId}`);
+    if (contentEl) {
+      row.insertBefore(card, contentEl);
+    } else {
+      row.appendChild(card);
+    }
   }
+
+  card.innerHTML = `
+    <div class="tool-header" onclick="this.parentElement.classList.toggle('open')">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span class="tool-chevron">›</span>
+        <span>Tool: <strong>${toolName}</strong></span>
+      </div>
+      <span class="tool-status running" id="tool-status-${toolId}">Running...</span>
+    </div>
+    <div class="tool-body" id="tool-body-${toolId}">
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">Arguments:</div>
+      <pre style="margin:0;padding:6px;background:var(--code-bg);border:none;"><code>${argsJson}</code></pre>
+    </div>
+  `;
   scrollToBottom(false);
+}
+
+/**
+ * Update Tool Result
+ */
+function update_tool_result(msgId, toolId, toolName, resultStr, errorStr, success = true, durationMs = 0) {
+  const statusEl = document.getElementById(`tool-status-${toolId}`);
+  const bodyEl = document.getElementById(`tool-body-${toolId}`);
+
+  if (statusEl) {
+    statusEl.className = success ? 'tool-status success' : 'tool-status error';
+    statusEl.innerText = success ? `Success (${durationMs}ms)` : `Failed (${durationMs}ms)`;
+  }
+
+  if (bodyEl) {
+    const outcomeDiv = document.createElement('div');
+    outcomeDiv.style.marginTop = '8px';
+    outcomeDiv.style.borderTop = '1px solid var(--border-color)';
+    outcomeDiv.style.paddingTop = '6px';
+
+    if (success) {
+      outcomeDiv.innerHTML = `
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">Result:</div>
+        <pre style="margin:0;padding:6px;background:var(--code-bg);border:none;max-height:180px;overflow:auto;"><code>${resultStr}</code></pre>
+      `;
+    } else {
+      outcomeDiv.innerHTML = `
+        <div style="font-size:11px;color:#fca5a5;margin-bottom:4px;">Error:</div>
+        <div style="color:#fca5a5;font-size:12px;">${errorStr}</div>
+      `;
+    }
+    bodyEl.appendChild(outcomeDiv);
+  }
 }
 
 /**
@@ -483,6 +526,7 @@ window.append_text_chunk = append_text_chunk;
 window.append_reasoning_chunk = append_reasoning_chunk;
 window.show_fallback_notice = show_fallback_notice;
 window.add_tool_card = add_tool_card;
+window.update_tool_result = update_tool_result;
 window.finish_assistant_message = finish_assistant_message;
 window.set_error = set_error;
 window.clear_chat = clear_chat;

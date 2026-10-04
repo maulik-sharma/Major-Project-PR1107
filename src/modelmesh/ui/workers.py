@@ -28,6 +28,8 @@ class ChatWorker(QThread):
     text_delta = pyqtSignal(str)
     reasoning_delta = pyqtSignal(str)
     tool_call = pyqtSignal(dict)
+    tool_start = pyqtSignal(dict)
+    tool_result = pyqtSignal(dict)
     usage = pyqtSignal(dict)
     finished_turn = pyqtSignal(dict)
     error_occurred = pyqtSignal(dict)
@@ -108,6 +110,12 @@ class ChatWorker(QThread):
                         "name": event.tool_call.name,
                         "arguments": event.tool_call.arguments,
                     })
+
+                elif event.type == StreamEventType.TOOL_START and event.data:
+                    self.tool_start.emit(event.data)
+
+                elif event.type == StreamEventType.TOOL_RESULT and event.data:
+                    self.tool_result.emit(event.data)
 
                 elif event.type == StreamEventType.USAGE and event.usage:
                     self.usage.emit({
