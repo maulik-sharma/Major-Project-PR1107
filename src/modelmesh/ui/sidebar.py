@@ -84,6 +84,9 @@ class SidebarWidget(QWidget):
         # 2. Conversation List
         self.conv_list = QListWidget()
         self.conv_list.setObjectName("conversationList")
+        self.conv_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.conv_list.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self.conv_list.setWordWrap(False)
         self.conv_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.conv_list.customContextMenuRequested.connect(self._show_context_menu)
         self.conv_list.itemClicked.connect(self._on_item_clicked)

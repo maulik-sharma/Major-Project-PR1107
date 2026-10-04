@@ -497,3 +497,28 @@ html, body {
   50% { opacity: 0; }
 }
 
+/* Custom Scrollbars (Consistent with Qt Dark Theme) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  background-color: transparent;
+}
+
+::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+::-webkit-scrollbar-corner {
+  background-color: transparent;
+}
+
+

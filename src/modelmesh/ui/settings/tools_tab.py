@@ -191,11 +191,14 @@ class ToolsTab(QWidget):
         self.skills_table = QTableWidget()
         self.skills_table.setColumnCount(3)
         self.skills_table.setHorizontalHeaderLabels(["Skill Name", "Description", "Actions"])
-        self.skills_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.skills_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        self.skills_table.setColumnWidth(0, 150)
         self.skills_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.skills_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
-        self.skills_table.setColumnWidth(2, 170)
-        self.skills_table.verticalHeader().setDefaultSectionSize(40)
+        self.skills_table.setColumnWidth(2, 175)
+        self.skills_table.verticalHeader().setDefaultSectionSize(48)
+        self.skills_table.verticalHeader().setVisible(False)
+        self.skills_table.setShowGrid(False)
         layout.addWidget(self.skills_table)
 
         skills_btn_row = QHBoxLayout()
@@ -253,19 +256,28 @@ class ToolsTab(QWidget):
         self.skills_table.setRowCount(len(skills))
 
         for row, skill in enumerate(skills):
-            self.skills_table.setItem(row, 0, QTableWidgetItem(skill.name))
-            self.skills_table.setItem(row, 1, QTableWidgetItem(skill.description))
+            self.skills_table.setRowHeight(row, 48)
+            name_item = QTableWidgetItem(skill.name)
+            name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.skills_table.setItem(row, 0, name_item)
+
+            desc_item = QTableWidgetItem(skill.description)
+            desc_item.setFlags(desc_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.skills_table.setItem(row, 1, desc_item)
 
             actions_widget = QWidget()
             actions_layout = QHBoxLayout(actions_widget)
-            actions_layout.setContentsMargins(6, 4, 6, 4)
+            actions_layout.setContentsMargins(4, 0, 8, 0)
             actions_layout.setSpacing(8)
+            actions_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
 
             view_btn = QPushButton("View")
             view_btn.setObjectName("skillActionBtn")
             view_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            view_btn.setFixedHeight(28)
+            view_btn.setMinimumWidth(64)
             view_btn.setStyleSheet(
-                "QPushButton { background-color: #27272a; color: #f4f4f6; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 5px; padding: 3px 12px; font-size: 11.5px; font-weight: 500; min-height: 22px; } QPushButton:hover { background-color: #3f3f46; color: #ffffff; }"
+                "QPushButton { background-color: #27272a; color: #f4f4f6; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 6px; padding: 0 8px; font-size: 12px; font-weight: 500; } QPushButton:hover { background-color: #3f3f46; color: #ffffff; border-color: rgba(255, 255, 255, 0.25); }"
             )
             view_btn.clicked.connect(lambda _, s=skill: self._view_skill(s))
             actions_layout.addWidget(view_btn)
@@ -273,8 +285,10 @@ class ToolsTab(QWidget):
             del_btn = QPushButton("Delete")
             del_btn.setObjectName("skillActionBtn")
             del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            del_btn.setFixedHeight(28)
+            del_btn.setMinimumWidth(64)
             del_btn.setStyleSheet(
-                "QPushButton { background-color: #27272a; color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 5px; padding: 3px 12px; font-size: 11.5px; font-weight: 500; min-height: 22px; } QPushButton:hover { background-color: rgba(239, 68, 68, 0.15); color: #ef4444; border-color: rgba(239, 68, 68, 0.4); }"
+                "QPushButton { background-color: #27272a; color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 6px; padding: 0 8px; font-size: 12px; font-weight: 500; } QPushButton:hover { background-color: rgba(239, 68, 68, 0.15); color: #ef4444; border-color: rgba(239, 68, 68, 0.45); }"
             )
             del_btn.clicked.connect(lambda _, s=skill: self._delete_skill(s))
             actions_layout.addWidget(del_btn)
