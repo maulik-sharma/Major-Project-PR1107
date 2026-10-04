@@ -196,6 +196,20 @@ function updateMessageDisplay(msgId) {
   if (thinkingBox && thinkingContent) {
     if (reasoning && reasoning.trim()) {
       thinkingBox.style.display = 'block';
+      const labelSpan = thinkingBox.querySelector('.thought-summary span:nth-child(2)');
+
+      if (buf.isStreaming && (!content || !content.trim())) {
+        if (labelSpan) labelSpan.innerText = 'Thinking...';
+        if (!thinkingBox.dataset.manualToggle) {
+          thinkingBox.classList.add('open');
+        }
+      } else {
+        if (labelSpan) labelSpan.innerText = 'Thought process';
+        if (buf.isStreaming && content && content.trim() && !thinkingBox.dataset.manualToggle) {
+          thinkingBox.classList.remove('open');
+        }
+      }
+
       thinkingContent.innerHTML = renderMarkdown(reasoning, buf.isStreaming);
       attachCodeCopyButtons(thinkingContent);
     } else {
@@ -208,6 +222,8 @@ function updateMessageDisplay(msgId) {
   if (contentEl) {
     if (content || !buf.isStreaming) {
       contentEl.innerHTML = renderMarkdown(content, buf.isStreaming) + (buf.isStreaming ? '<span class="streaming-cursor"></span>' : '');
+    } else if (buf.isStreaming && reasoning && reasoning.trim()) {
+      contentEl.innerHTML = '';
     } else {
       contentEl.innerHTML = '<span class="streaming-cursor"></span>';
     }
@@ -304,6 +320,7 @@ function start_assistant_message(msgId, modelName = '', providerName = '', strat
 function toggleThinking(msgId) {
   const box = document.getElementById(`thinking-${msgId}`);
   if (box) {
+    box.dataset.manualToggle = 'true';
     box.classList.toggle('open');
   }
 }

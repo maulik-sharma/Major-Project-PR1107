@@ -29,6 +29,8 @@ class SettingsDialog(QDialog):
     def __init__(
         self,
         registry: ModelRegistry,
+        tool_registry: Optional[Any] = None,
+        skill_loader: Optional[Any] = None,
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
@@ -36,6 +38,8 @@ class SettingsDialog(QDialog):
         self.resize(750, 520)
 
         self.registry = registry
+        self.tool_registry = tool_registry
+        self.skill_loader = skill_loader
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -53,8 +57,13 @@ class SettingsDialog(QDialog):
         self.routing_tab = RoutingTab(parent=self)
         self.tabs.addTab(self.routing_tab, "Routing")
 
-        self.tools_tab = ToolsTab(parent=self)
-        self.tabs.addTab(self.tools_tab, "Tools")
+        self.tools_tab = ToolsTab(
+            tool_registry=self.tool_registry,
+            skill_loader=self.skill_loader,
+            parent=self,
+        )
+        self.tools_tab.config_changed.connect(self._on_tab_config_changed)
+        self.tabs.addTab(self.tools_tab, "Tools & Skills")
 
         self.appearance_tab = AppearanceTab(parent=self)
         self.tabs.addTab(self.appearance_tab, "Appearance")

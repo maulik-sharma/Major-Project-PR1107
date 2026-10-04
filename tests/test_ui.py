@@ -248,3 +248,81 @@ def test_thinking_tag_extraction_on_finish(qapp, tmp_path: Path) -> None:
     assert "Analyzing constraint" in asst.reasoning
 
 
+def test_tools_tab_and_skills_management(qapp, tmp_path: Path) -> None:
+    from modelmesh.core.skills import SkillLoader
+    from modelmesh.core.tools.builtin import create_builtin_registry
+    from modelmesh.ui.settings.tools_tab import ToolsTab
+
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir()
+    skill1_dir = skills_dir / "my-skill"
+    skill1_dir.mkdir()
+    (skill1_dir / "SKILL.md").write_text(
+        "---\nname: my-skill\ndescription: Test skill.\n---\nBody here.",
+        encoding="utf-8",
+    )
+
+    ws_dir = tmp_path / "workspace"
+    ws_dir.mkdir()
+
+    tool_reg = create_builtin_registry(workspace_folder=str(ws_dir))
+    skill_loader = SkillLoader(skills_dir=skills_dir)
+
+    tab = ToolsTab(tool_registry=tool_reg, skill_loader=skill_loader)
+    assert tab.skills_table.rowCount() == 1
+    assert tab.skills_table.item(0, 0).text() == "my-skill"
+
+    # Test changing workspace folder text
+    new_ws = tmp_path / "new_ws"
+    new_ws.mkdir()
+    tab.ws_input.setText(str(new_ws))
+    assert tool_reg.workspace_folder == str(new_ws)
+
+    # Test tool toggling
+    tab.calc_check.setChecked(False)
+    assert tool_reg.is_tool_enabled("calculator") is False
+    tab.calc_check.setChecked(True)
+    assert tool_reg.is_tool_enabled("calculator") is True
+
+
+def test_skills_menu_actions(qapp, tmp_path: Path) -> None:
+    from modelmesh.core.skills import SkillLoader
+    from modelmesh.core.tools.builtin import create_builtin_registry
+
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir()
+    skill1_dir = skills_dir / "sql-expert"
+    skill1_dir.mkdir()
+    (skill1_dir / "SKILL.md").write_text(
+        "---\nname: sql-expert\ndescription: Optimize SQL queries.\n---\nSQL rules.",
+        encoding="utf-8",
+    )
+
+    reg = create_test_registry()
+    storage = Storage(tmp_path / "test_skills_win.db")
+    router = Router(registry=reg)
+    tool_reg = create_builtin_registry()
+    skill_loader = SkillLoader(skills_dir=skills_dir)
+    engine = ChatEngine(
+        registry=reg,
+        router=router,
+        storage=storage,
+        tool_registry=tool_reg,
+        skill_loader=skill_loader,
+    )
+
+    win = MainWindow(
+        registry=reg,
+        router=router,
+        engine=engine,
+        storage=storage,
+    )
+
+    assert win.skills_btn.text() == "Skills (1)"
+
+    # Triggering skill should fill composer
+    win._on_skill_triggered("sql-expert")
+    assert "sql-expert" in win.composer.get_text()
+
+
+

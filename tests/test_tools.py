@@ -106,3 +106,55 @@ def test_tool_registry_execution() -> None:
     bad_res = reg.execute("nonexistent_tool", {})
     assert bad_res.success is False
     assert "not registered" in bad_res.error
+
+
+def test_tool_registry_dynamic_workspace(tmp_path: Path) -> None:
+    ws1 = tmp_path / "ws1"
+    ws1.mkdir()
+    ws2 = tmp_path / "ws2"
+    ws2.mkdir()
+
+    file1 = ws1 / "file1.txt"
+    file1.write_text("content 1", encoding="utf-8")
+
+    file2 = ws2 / "file2.txt"
+    file2.write_text("content 2", encoding="utf-8")
+
+    reg = create_builtin_registry(workspace_folder=str(ws1))
+    assert reg.workspace_folder == str(ws1)
+
+    # Read from ws1 succeeds
+    r1 = reg.execute("read_text_file", {"path": "file1.txt"})
+    assert r1.success is True
+    assert r1.output.get("content") == "content 1"
+
+    # Reading file2 from ws2 fails when ws1 is active
+    r_fail = reg.execute("read_text_file", {"path": str(file2)})
+    assert "Access denied" in r_fail.output.get("error", "")
+
+    # Switch workspace to ws2 dynamically
+    reg.set_workspace_folder(str(ws2))
+    assert reg.workspace_folder == str(ws2)
+
+    # Now reading file2 succeeds!
+    r2 = reg.execute("read_text_file", {"path": "file2.txt"})
+    assert r2.success is True
+    assert r2.output.get("content") == "content 2"
+
+
+def test_tool_registry_disable_enable() -> None:
+    reg = create_builtin_registry()
+    assert reg.is_tool_enabled("calculator") is True
+
+    # Disable calculator
+    reg.set_tool_enabled("calculator", False)
+    assert reg.is_tool_enabled("calculator") is False
+    specs = [s.name for s in reg.get_tool_specs()]
+    assert "calculator" not in specs
+
+    # Re-enable calculator
+    reg.set_tool_enabled("calculator", True)
+    assert reg.is_tool_enabled("calculator") is True
+    specs = [s.name for s in reg.get_tool_specs()]
+    assert "calculator" in specs
+

@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from modelmesh.core.types import ToolSpec
@@ -34,9 +35,26 @@ class ToolExecutionResult:
 class ToolRegistry:
     """Central registry for declaring and executing LLM-callable tools."""
 
-    def __init__(self) -> None:
+    def __init__(self, workspace_folder: Optional[str] = None) -> None:
         self._tools: Dict[str, ToolSpec] = {}
         self._handlers: Dict[str, Callable[..., Any]] = {}
+        self._disabled_tools: set[str] = set()
+        self.workspace_folder = workspace_folder or str(Path.cwd())
+
+    def set_workspace_folder(self, folder: str) -> None:
+        """Set active workspace directory for filesystem tools."""
+        self.workspace_folder = folder
+
+    def set_tool_enabled(self, name: str, enabled: bool) -> None:
+        """Enable or disable a specific tool."""
+        if enabled:
+            self._disabled_tools.discard(name)
+        else:
+            self._disabled_tools.add(name)
+
+    def is_tool_enabled(self, name: str) -> bool:
+        """Check if a tool is enabled."""
+        return name in self._tools and name not in self._disabled_tools
 
     def register(
         self,
@@ -51,8 +69,11 @@ class ToolRegistry:
         self._handlers[name] = func
 
     def get_tool_specs(self) -> List[ToolSpec]:
-        """Return all registered ToolSpecs."""
-        return list(self._tools.values())
+        """Return all registered and enabled ToolSpecs."""
+        return [
+            spec for name, spec in self._tools.items()
+            if name not in self._disabled_tools
+        ]
 
     def get_spec(self, name: str) -> Optional[ToolSpec]:
         """Get ToolSpec for a given tool name."""

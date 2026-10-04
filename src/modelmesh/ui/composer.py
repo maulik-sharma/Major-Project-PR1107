@@ -224,6 +224,10 @@ class ComposerWidget(QWidget):
         self.text_input.moveCursor(self.text_input.textCursor().MoveOperation.End)
         self.text_input.setFocus()
 
+    def get_text(self) -> str:
+        """Get the current text in the input box."""
+        return self.text_input.toPlainText()
+
     def _on_action_btn_clicked(self) -> None:
         if self._is_streaming:
             self.stop_requested.emit()

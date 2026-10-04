@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from PyQt6.QtCore import Qt, pyqtSlot
@@ -128,6 +129,14 @@ class MainWindow(QMainWindow):
         self.tools_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.tools_btn.clicked.connect(self._toggle_tools)
         self.toolbar.addWidget(self.tools_btn)
+
+        # Skills dropdown menu button
+        self.skills_btn = QToolButton()
+        self.skills_btn.setText("Skills")
+        self.skills_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.skills_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._populate_skills_menu()
+        self.toolbar.addWidget(self.skills_btn)
 
         # 2. Main Layout Splitter
         main_splitter = QSplitter(Qt.Orientation.Horizontal, self)
@@ -523,10 +532,67 @@ class MainWindow(QMainWindow):
         self.tools_btn.setText(f"Tools: {'On' if active else 'Off'}")
         self.status_bar.showMessage(f"Tools {'enabled' if active else 'disabled'}.")
 
-    def _open_settings_dialog(self) -> None:
-        dlg = SettingsDialog(registry=self.registry, parent=self)
-        dlg.settings_updated.connect(self._populate_model_combo)
+    def _populate_skills_menu(self) -> None:
+        """Populate the Skills button dropdown menu with installed skills and management actions."""
+        menu = QMenu(self)
+        skills = self.engine.skill_loader.list_skills() if self.engine.skill_loader else []
+        self.skills_btn.setText(f"Skills ({len(skills)})" if skills else "Skills")
+
+        if skills:
+            for s in skills:
+                desc_snippet = f" - {s.description[:35]}..." if s.description else ""
+                action = menu.addAction(f"{s.name}{desc_snippet}")
+                action.triggered.connect(lambda _, name=s.name: self._on_skill_triggered(name))
+            menu.addSeparator()
+
+        new_skill_action = menu.addAction("+ Create New Skill...")
+        new_skill_action.triggered.connect(self._create_new_skill)
+
+        manage_action = menu.addAction("Manage Skills & Tools...")
+        manage_action.triggered.connect(lambda: self._open_settings_dialog(tab_index=3))
+
+        self.skills_btn.setMenu(menu)
+
+    def _on_skill_triggered(self, skill_name: str) -> None:
+        """Insert skill directive into composer and focus it."""
+        current_text = self.composer.get_text().strip()
+        prefix = f"Please use the '{skill_name}' skill to "
+        if not current_text:
+            self.composer.text_input.setPlainText(prefix)
+        else:
+            self.composer.text_input.setPlainText(f"{prefix}\n{current_text}")
+        self.composer.text_input.setFocus()
+
+    def _create_new_skill(self) -> None:
+        """Open create skill dialog and refresh menu on save."""
+        from modelmesh.ui.settings.tools_tab import CreateSkillDialog
+        skills_dir = (
+            self.engine.skill_loader.skills_dir
+            if self.engine.skill_loader
+            else Path.cwd() / "skills"
+        )
+        dlg = CreateSkillDialog(skills_dir=skills_dir, parent=self)
+        if dlg.exec() == CreateSkillDialog.DialogCode.Accepted:
+            if self.engine.skill_loader:
+                self.engine.skill_loader.reload()
+            self._populate_skills_menu()
+            self.status_bar.showMessage("New skill created successfully.")
+
+    def _open_settings_dialog(self, tab_index: int = 0) -> None:
+        dlg = SettingsDialog(
+            registry=self.registry,
+            tool_registry=self.engine.tool_registry,
+            skill_loader=self.engine.skill_loader,
+            parent=self,
+        )
+        if tab_index > 0:
+            dlg.tabs.setCurrentIndex(tab_index)
+        dlg.settings_updated.connect(self._on_settings_updated)
         dlg.exec()
+
+    def _on_settings_updated(self) -> None:
+        self._populate_model_combo()
+        self._populate_skills_menu()
 
     def _open_usage_dialog(self) -> None:
         dlg = UsageDialog(storage=self.storage, parent=self)
@@ -535,3 +601,4 @@ class MainWindow(QMainWindow):
     def _open_router_lab_dialog(self) -> None:
         dlg = RouterLabDialog(registry=self.registry, router=self.router, parent=self)
         dlg.exec()
+

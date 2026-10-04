@@ -121,14 +121,15 @@ def read_text_file(
 ) -> Dict[str, Any]:
     """Read a local text file safely within a specified workspace folder."""
     root = Path(workspace_folder).resolve() if workspace_folder else Path.cwd().resolve()
-    target = (root / path).resolve()
+    raw_p = Path(path)
+    target = raw_p.resolve() if raw_p.is_absolute() else (root / raw_p).resolve()
 
     # Security check: ensure path is within workspace root
     try:
         target.relative_to(root)
     except ValueError:
         return {
-            "error": f"Access denied: Target path '{path}' is outside the workspace directory '{root}'."
+            "error": f"Access denied: Target path '{path}' is outside the configured workspace directory '{root}'."
         }
 
     if not target.exists():
@@ -194,7 +195,7 @@ def fetch_url(url: str, max_chars: int = 4000) -> Dict[str, Any]:
 
 def create_builtin_registry(workspace_folder: Optional[str] = None) -> ToolRegistry:
     """Create and initialize a ToolRegistry with all standard built-in tools."""
-    registry = ToolRegistry()
+    registry = ToolRegistry(workspace_folder=workspace_folder)
 
     # Calculator
     registry.register(
@@ -226,7 +227,7 @@ def create_builtin_registry(workspace_folder: Optional[str] = None) -> ToolRegis
 
     # Read File
     def _read_file_wrapper(path: str, max_lines: int = 200) -> Dict[str, Any]:
-        return read_text_file(path=path, max_lines=max_lines, workspace_folder=workspace_folder)
+        return read_text_file(path=path, max_lines=max_lines, workspace_folder=registry.workspace_folder)
 
     registry.register(
         name="read_text_file",
