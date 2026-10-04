@@ -150,35 +150,95 @@ function attachCodeCopyButtons(container) {
   });
 }
 
+const REASONING_TAG_NAMES = ['thought', 'think', 'reasoning', 'reflection', 'scratchpad'];
+
+const TRANSITION_PATTERNS = [
+  /\n\s*(?:---|===|\*\*\*)\s*\n+/i,
+  /\n\s*(?:Here is (?:the|my) (?:response|answer|evaluation|score|summary|analysis|review|breakdown)|Let's write (?:the|a) (?:response|answer)|I will format (?:the|my) (?:output|response)|Final (?:Response|Answer|Verdict|Evaluation|Score):|Response:|Answer:)\s*[:\n]+/i,
+  /\n\s*(?:#{1,4}\s+|\*\*(?:ATS Score|Executive Summary|Summary|Evaluation|Overview|Verdict|Final|Result|Score|Answer|Solution|Breakdown))/i
+];
+
+function findTransitionSplit(text) {
+  if (!text) return -1;
+  for (let i = 0; i < TRANSITION_PATTERNS.length; i++) {
+    const match = TRANSITION_PATTERNS[i].exec(text);
+    if (match && (match.index > 20 || match[0].includes('---') || match[0].includes('==='))) {
+      return match.index;
+    }
+  }
+  return -1;
+}
+
 /**
- * Extract reasoning from <thought> / <think> tags and separate from visible response
+ * Robust extraction of reasoning/scratchpad notes vs user-facing content
  */
-function extractThinkingAndContent(rawText, explicitReasoning = '') {
-  let reasoning = explicitReasoning || '';
+function extractThinkingAndContent(rawText, explicitReasoning = '', isStreaming = false) {
+  let reasoningParts = [];
+  if (explicitReasoning && explicitReasoning.trim()) {
+    reasoningParts.push(explicitReasoning.trim());
+  }
   let content = rawText || '';
 
-  // Extract closed <thought>...</thought> or <think>...</think>
-  const fullTagRegex = /<(?:thought|think)>([\s\S]*?)<\/(?:thought|think)>/gi;
+  // 1. Extract closed tags
+  const tagListStr = REASONING_TAG_NAMES.join('|');
+  const closedTagRegex = new RegExp(`<(${tagListStr})>([\\s\\S]*?)<\\/\\1>`, 'gi');
   let match;
-  while ((match = fullTagRegex.exec(content)) !== null) {
-    const thoughtText = match[1].trim();
-    if (thoughtText) {
-      reasoning = reasoning ? (reasoning + '\n\n' + thoughtText) : thoughtText;
+  while ((match = closedTagRegex.exec(content)) !== null) {
+    const thoughtBody = match[2].trim();
+    if (thoughtBody) {
+      reasoningParts.push(thoughtBody);
     }
   }
-  content = content.replace(fullTagRegex, '').trimStart();
+  content = content.replace(closedTagRegex, '').trim();
 
-  // Extract unclosed <thought> or <think> (e.g. streaming in progress)
-  const openTagMatch = content.match(/<(?:thought|think)>([\s\S]*)$/i);
-  if (openTagMatch) {
-    const unclosedThought = openTagMatch[1];
-    if (unclosedThought) {
-      reasoning = reasoning ? (reasoning + '\n\n' + unclosedThought) : unclosedThought;
+  // 2. Extract unclosed tag (<thought>... without matching </thought>)
+  const unclosedTagRegex = new RegExp(`<(${tagListStr})>([\\s\\S]*)$`, 'i');
+  const unclosedMatch = unclosedTagRegex.exec(content);
+
+  if (unclosedMatch) {
+    const prefix = content.substring(0, unclosedMatch.index).trim();
+    const unclosedBody = unclosedMatch[2].trim();
+
+    const splitIdx = findTransitionSplit(unclosedBody);
+    if (splitIdx !== -1) {
+      const thoughtPart = unclosedBody.substring(0, splitIdx).trim();
+      let ansPart = unclosedBody.substring(splitIdx).trim();
+      ansPart = ansPart.replace(/^(?:---|===|\*\*\*)\s*/, '').trim();
+      if (thoughtPart) reasoningParts.push(thoughtPart);
+      content = prefix ? (prefix + '\n\n' + ansPart) : ansPart;
+    } else {
+      if (isStreaming) {
+        if (unclosedBody) reasoningParts.push(unclosedBody);
+        content = prefix;
+      } else {
+        if (prefix) {
+          if (unclosedBody) reasoningParts.push(unclosedBody);
+          content = prefix;
+        } else {
+          content = unclosedBody;
+        }
+      }
     }
-    content = content.substring(0, openTagMatch.index).trim();
   }
 
-  return { reasoning, content };
+  // 3. Final safety check on completion: if content is empty but reasoning exists, extract answer
+  if (!isStreaming && (!content || !content.trim()) && reasoningParts.length > 0) {
+    const allReasoning = reasoningParts.join('\n\n').trim();
+    const splitIdx = findTransitionSplit(allReasoning);
+    if (splitIdx !== -1) {
+      const thoughtPart = allReasoning.substring(0, splitIdx).trim();
+      let ansPart = allReasoning.substring(splitIdx).trim();
+      ansPart = ansPart.replace(/^(?:---|===|\*\*\*)\s*/, '').trim();
+      return { reasoning: thoughtPart, content: ansPart };
+    } else {
+      return { reasoning: '', content: allReasoning };
+    }
+  }
+
+  return {
+    reasoning: reasoningParts.join('\n\n').trim(),
+    content: content.trim()
+  };
 }
 
 /**
@@ -188,7 +248,7 @@ function updateMessageDisplay(msgId) {
   const buf = messageBuffers[msgId];
   if (!buf) return;
 
-  const { reasoning, content } = extractThinkingAndContent(buf.text, buf.reasoning);
+  const { reasoning, content } = extractThinkingAndContent(buf.text, buf.reasoning, buf.isStreaming);
 
   // Update Thinking Box
   const thinkingBox = document.getElementById(`thinking-${msgId}`);

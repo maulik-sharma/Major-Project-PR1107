@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
 )
 
 from modelmesh.core.engine import ChatEngine
+from modelmesh.core.formatting import extract_reasoning_and_content
 from modelmesh.core.registry import ModelRegistry
 from modelmesh.core.routing.router import Router
 from modelmesh.core.storage import Storage
@@ -264,16 +265,22 @@ class MainWindow(QMainWindow):
                 text = msg.text_content()
                 self.chat_view.add_user_message(msg.id, text, parts)
             elif role == "assistant":
-                text = msg.text_content()
+                raw_text = msg.text_content()
+                raw_reasoning = msg.reasoning or ""
+                clean_reasoning, clean_text = extract_reasoning_and_content(
+                    raw_text=raw_text,
+                    explicit_reasoning=raw_reasoning,
+                    is_streaming=False,
+                )
                 self.chat_view.start_assistant_message(
                     msg.id,
                     model_name=meta["model_id"] or "",
                     provider_name=meta["provider_id"] or "",
                     strategy_name="loaded",
                 )
-                if msg.reasoning:
-                    self.chat_view.append_reasoning(msg.id, msg.reasoning)
-                self.chat_view.append_token(msg.id, text)
+                if clean_reasoning:
+                    self.chat_view.append_reasoning(msg.id, clean_reasoning)
+                self.chat_view.append_token(msg.id, clean_text)
                 self.chat_view.finish_assistant_message(msg.id, meta)
 
         self.status_bar.showMessage(f"Loaded conversation '{conv_id}'")
@@ -460,28 +467,16 @@ class MainWindow(QMainWindow):
         self.session_total_cost += cost
         self.cost_status_label.setText(f"Session Est. Cost: ${self.session_total_cost:.4f} ")
 
-        # Extract reasoning from <thought> or <think> if needed
-        saved_text = self.accumulated_text
-        saved_reasoning = self.accumulated_reasoning or None
-
-        if not saved_reasoning:
-            thought_matches = re.findall(
-                r"<(?:thought|think)>(.*?)</(?:thought|think)>",
-                saved_text,
-                flags=re.DOTALL | re.IGNORECASE,
-            )
-            if thought_matches:
-                saved_reasoning = "\n\n".join(m.strip() for m in thought_matches if m.strip())
-                saved_text = re.sub(
-                    r"<(?:thought|think)>.*?</(?:thought|think)>",
-                    "",
-                    saved_text,
-                    flags=re.DOTALL | re.IGNORECASE,
-                ).strip()
+        # Extract reasoning from <thought>, <think>, etc. using robust parser
+        saved_reasoning, saved_text = extract_reasoning_and_content(
+            raw_text=self.accumulated_text,
+            explicit_reasoning=self.accumulated_reasoning,
+            is_streaming=False,
+        )
 
         # Save assistant message to SQLite
         asst_msg = Message.from_text("assistant", saved_text)
-        asst_msg.reasoning = saved_reasoning
+        asst_msg.reasoning = saved_reasoning or None
         asst_msg.id = self.current_assistant_msg_id
         self.storage.save_message(
             message=asst_msg,

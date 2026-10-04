@@ -248,6 +248,50 @@ def test_thinking_tag_extraction_on_finish(qapp, tmp_path: Path) -> None:
     assert "Analyzing constraint" in asst.reasoning
 
 
+def test_unclosed_thought_recovery_in_main_window(qapp, tmp_path: Path) -> None:
+    reg = create_test_registry()
+    storage = Storage(tmp_path / "test_unclosed.db")
+    router = Router(registry=reg)
+    engine = ChatEngine(registry=reg, router=router, storage=storage)
+
+    win = MainWindow(
+        registry=reg,
+        router=router,
+        engine=engine,
+        storage=storage,
+    )
+
+    # Simulates model ending with unclosed thought and divider
+    win.accumulated_text = (
+        "<thought>Thinking about the ATS score...\n"
+        "All calculations done.\n"
+        "---\n"
+        "**ATS Score Estimate: 95/100**\n\n"
+        "### Executive Summary\n"
+        "Great resume."
+    )
+    win.accumulated_reasoning = ""
+    win.current_assistant_msg_id = "test-unclosed-id"
+    win._on_worker_finished({
+        "model_id": "mock-fast",
+        "endpoint_id": "mock-fast@mock",
+        "provider_id": "mock",
+        "cost_usd": 0.0002,
+        "latency_sec": 1.0,
+        "tokens_in": 100,
+        "tokens_out": 200,
+    })
+
+    msgs = storage.get_messages(win.current_conversation_id)
+    assert len(msgs) == 1
+    asst = msgs[0]
+    assert asst.role == "assistant"
+    assert "**ATS Score Estimate: 95/100**" in asst.text_content()
+    assert "### Executive Summary" in asst.text_content()
+    assert "Thinking about the ATS score" in (asst.reasoning or "")
+
+
+
 def test_tools_tab_and_skills_management(qapp, tmp_path: Path) -> None:
     from modelmesh.core.skills import SkillLoader
     from modelmesh.core.tools.builtin import create_builtin_registry
