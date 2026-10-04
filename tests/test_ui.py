@@ -18,6 +18,8 @@ def qapp():
     app = QApplication.instance()
     if app is None:
         app = QApplication(sys.argv + ["--no-sandbox", "--disable-gpu"])
+    app.setApplicationName("ModelMesh")
+    app.setOrganizationName("ModelMesh")
     return app
 
 
@@ -316,11 +318,15 @@ def test_tools_tab_and_skills_management(qapp, tmp_path: Path) -> None:
     assert tab.skills_table.rowCount() == 1
     assert tab.skills_table.item(0, 0).text() == "my-skill"
 
-    # Test changing workspace folder text
+    # Test changing workspace folder text and QSettings persistence
+    from modelmesh.ui.settings.tools_tab import get_app_settings, set_custom_settings_path
+    set_custom_settings_path(tmp_path / "settings.ini")
     new_ws = tmp_path / "new_ws"
     new_ws.mkdir()
     tab.ws_input.setText(str(new_ws))
     assert tool_reg.workspace_folder == str(new_ws)
+    assert get_app_settings().value("workspace_folder") == str(new_ws)
+    set_custom_settings_path(None)
 
     # Test tool toggling
     tab.calc_check.setChecked(False)

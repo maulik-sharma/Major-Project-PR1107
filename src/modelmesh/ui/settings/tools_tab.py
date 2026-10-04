@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
-from PyQt6.QtCore import QUrl, pyqtSignal
+from PyQt6.QtCore import QSettings, QStandardPaths, QUrl, pyqtSignal, Qt
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -28,6 +28,40 @@ from PyQt6.QtWidgets import (
 
 from modelmesh.core.skills import SkillLoader
 from modelmesh.core.tools.registry import ToolRegistry
+
+
+_custom_settings_path: Optional[Path] = None
+
+
+def set_custom_settings_path(path: Optional[Path]) -> None:
+    """Override settings file location (useful for isolated tests)."""
+    global _custom_settings_path
+    _custom_settings_path = path
+
+
+def get_app_settings(ini_path: Optional[Path] = None) -> QSettings:
+    """Get persistent QSettings instance for ModelMesh stored in user app data."""
+    if ini_path is not None:
+        target = ini_path
+    elif _custom_settings_path is not None:
+        target = _custom_settings_path
+    else:
+        app_data = QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.AppDataLocation
+        )
+        if not app_data:
+            app_dir = Path.cwd() / "data"
+        else:
+            app_dir = Path(app_data) / "modelmesh"
+        try:
+            app_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            app_dir = Path.cwd() / "data"
+            app_dir.mkdir(parents=True, exist_ok=True)
+        target = app_dir / "settings.ini"
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return QSettings(str(target), QSettings.Format.IniFormat)
 
 
 class CreateSkillDialog(QDialog):
@@ -159,15 +193,20 @@ class ToolsTab(QWidget):
         self.skills_table.setHorizontalHeaderLabels(["Skill Name", "Description", "Actions"])
         self.skills_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.skills_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.skills_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.skills_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        self.skills_table.setColumnWidth(2, 170)
+        self.skills_table.verticalHeader().setDefaultSectionSize(40)
         layout.addWidget(self.skills_table)
 
         skills_btn_row = QHBoxLayout()
         new_skill_btn = QPushButton("+ New Skill...")
+        new_skill_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         new_skill_btn.clicked.connect(self._on_new_skill)
         open_folder_btn = QPushButton("Open Skills Directory")
+        open_folder_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         open_folder_btn.clicked.connect(self._on_open_skills_dir)
         reload_skills_btn = QPushButton("Reload")
+        reload_skills_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         reload_skills_btn.clicked.connect(self.refresh_skills)
 
         skills_btn_row.addWidget(new_skill_btn)
@@ -187,6 +226,9 @@ class ToolsTab(QWidget):
         folder = text.strip()
         if folder and Path(folder).exists() and self.tool_registry:
             self.tool_registry.set_workspace_folder(folder)
+            settings = get_app_settings()
+            settings.setValue("workspace_folder", folder)
+            settings.sync()
             self.config_changed.emit()
 
     def _on_browse(self) -> None:
@@ -196,6 +238,9 @@ class ToolsTab(QWidget):
             self.ws_input.setText(folder)
             if self.tool_registry:
                 self.tool_registry.set_workspace_folder(folder)
+                settings = get_app_settings()
+                settings.setValue("workspace_folder", folder)
+                settings.sync()
                 self.config_changed.emit()
 
     def refresh_skills(self) -> None:
@@ -213,14 +258,24 @@ class ToolsTab(QWidget):
 
             actions_widget = QWidget()
             actions_layout = QHBoxLayout(actions_widget)
-            actions_layout.setContentsMargins(4, 2, 4, 2)
-            actions_layout.setSpacing(4)
+            actions_layout.setContentsMargins(6, 4, 6, 4)
+            actions_layout.setSpacing(8)
 
             view_btn = QPushButton("View")
+            view_btn.setObjectName("skillActionBtn")
+            view_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            view_btn.setStyleSheet(
+                "QPushButton { background-color: #27272a; color: #f4f4f6; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 5px; padding: 3px 12px; font-size: 11.5px; font-weight: 500; min-height: 22px; } QPushButton:hover { background-color: #3f3f46; color: #ffffff; }"
+            )
             view_btn.clicked.connect(lambda _, s=skill: self._view_skill(s))
             actions_layout.addWidget(view_btn)
 
             del_btn = QPushButton("Delete")
+            del_btn.setObjectName("skillActionBtn")
+            del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            del_btn.setStyleSheet(
+                "QPushButton { background-color: #27272a; color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 5px; padding: 3px 12px; font-size: 11.5px; font-weight: 500; min-height: 22px; } QPushButton:hover { background-color: rgba(239, 68, 68, 0.15); color: #ef4444; border-color: rgba(239, 68, 68, 0.4); }"
+            )
             del_btn.clicked.connect(lambda _, s=skill: self._delete_skill(s))
             actions_layout.addWidget(del_btn)
 

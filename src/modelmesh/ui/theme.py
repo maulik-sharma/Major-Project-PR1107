@@ -404,6 +404,23 @@ QTableWidget::item:selected, QTreeWidget::item:selected {
     color: #ffffff;
 }
 
+QTableWidget QPushButton {
+    background-color: #27272a;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 5px;
+    color: #f4f4f6;
+    padding: 3px 10px;
+    font-size: 11.5px;
+    font-weight: 500;
+    min-height: 22px;
+}
+
+QTableWidget QPushButton:hover {
+    background-color: #3f3f46;
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.22);
+}
+
 QHeaderView::section {
     background-color: #18181b;
     color: #71717a;

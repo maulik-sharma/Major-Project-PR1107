@@ -11,7 +11,7 @@ _src_dir = str(Path(__file__).resolve().parent.parent)
 if _src_dir not in sys.path:
     sys.path.insert(0, _src_dir)
 
-from PyQt6.QtCore import QStandardPaths
+from PyQt6.QtCore import QSettings, QStandardPaths
 from PyQt6.QtWidgets import QApplication
 
 from modelmesh.core.engine import ChatEngine
@@ -22,6 +22,7 @@ from modelmesh.core.skills import SkillLoader
 from modelmesh.core.storage import Storage
 from modelmesh.core.tools.builtin import create_builtin_registry
 from modelmesh.ui.main_window import MainWindow
+from modelmesh.ui.settings.tools_tab import get_app_settings
 from modelmesh.ui.theme import apply_theme
 
 # Load environment keys
@@ -64,7 +65,14 @@ def main() -> None:
     db_path = get_db_path()
     storage = Storage(db_path=db_path)
     router = Router(registry=registry)
-    tool_registry = create_builtin_registry()
+
+    # Load persisted workspace folder
+    settings = get_app_settings()
+    saved_workspace = settings.value("workspace_folder", str(Path.cwd()), type=str)
+    if not Path(saved_workspace).exists():
+        saved_workspace = str(Path.cwd())
+
+    tool_registry = create_builtin_registry(workspace_folder=saved_workspace)
     skill_loader = SkillLoader(skills_dir=Path.cwd() / "skills")
     engine = ChatEngine(
         registry=registry,
