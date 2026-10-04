@@ -249,6 +249,7 @@ class Storage:
             "parts": [p.to_dict() for p in message.parts],
             "tool_calls": [tc.to_dict() for tc in message.tool_calls],
             "tool_call_id": message.tool_call_id,
+            "reasoning": message.reasoning,
             "meta": message.meta,
         }
         with self._lock:

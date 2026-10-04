@@ -2,7 +2,7 @@
 
 DARK_THEME_QSS = """
 QMainWindow, QDialog {
-    background-color: #0f0f11;
+    background-color: #141417;
     color: #f4f4f6;
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-size: 13px;
@@ -168,12 +168,12 @@ QToolButton:checked {
 
 /* Composer Panel */
 #composerWidget {
-    background-color: #0f0f11;
+    background-color: #141417;
     padding: 10px 24px 18px 24px;
 }
 
 #inputCard {
-    background-color: #1c1c1f;
+    background-color: #1c1c20;
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 18px;
     padding: 10px 14px 8px 14px;

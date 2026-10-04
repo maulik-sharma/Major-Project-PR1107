@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -259,6 +260,8 @@ class MainWindow(QMainWindow):
                     provider_name=meta["provider_id"] or "",
                     strategy_name="loaded",
                 )
+                if msg.reasoning:
+                    self.chat_view.append_reasoning(msg.id, msg.reasoning)
                 self.chat_view.append_token(msg.id, text)
                 self.chat_view.finish_assistant_message(msg.id, meta)
 
@@ -349,6 +352,7 @@ class MainWindow(QMainWindow):
         assistant_msg_id = str(uuid.uuid4())
         self.current_assistant_msg_id = assistant_msg_id
         self.accumulated_text = ""
+        self.accumulated_reasoning = ""
 
         self.current_worker = ChatWorker(
             engine=self.engine,
@@ -394,6 +398,7 @@ class MainWindow(QMainWindow):
         self.chat_view.append_token(self.current_assistant_msg_id, chunk)
 
     def _on_worker_reasoning_delta(self, chunk: str) -> None:
+        self.accumulated_reasoning += chunk
         self.chat_view.append_reasoning(self.current_assistant_msg_id, chunk)
 
     def _on_worker_tool_call(self, data: Dict[str, Any]) -> None:
@@ -413,8 +418,28 @@ class MainWindow(QMainWindow):
         self.session_total_cost += cost
         self.cost_status_label.setText(f"Session Est. Cost: ${self.session_total_cost:.4f} ")
 
+        # Extract reasoning from <thought> or <think> if needed
+        saved_text = self.accumulated_text
+        saved_reasoning = self.accumulated_reasoning or None
+
+        if not saved_reasoning:
+            thought_matches = re.findall(
+                r"<(?:thought|think)>(.*?)</(?:thought|think)>",
+                saved_text,
+                flags=re.DOTALL | re.IGNORECASE,
+            )
+            if thought_matches:
+                saved_reasoning = "\n\n".join(m.strip() for m in thought_matches if m.strip())
+                saved_text = re.sub(
+                    r"<(?:thought|think)>.*?</(?:thought|think)>",
+                    "",
+                    saved_text,
+                    flags=re.DOTALL | re.IGNORECASE,
+                ).strip()
+
         # Save assistant message to SQLite
-        asst_msg = Message.from_text("assistant", self.accumulated_text)
+        asst_msg = Message.from_text("assistant", saved_text)
+        asst_msg.reasoning = saved_reasoning
         asst_msg.id = self.current_assistant_msg_id
         self.storage.save_message(
             message=asst_msg,

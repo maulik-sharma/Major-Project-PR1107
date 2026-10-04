@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from PyQt6.QtCore import QObject, QTimer, QUrl, pyqtSignal, pyqtSlot
-from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtGui import QColor, QDesktopServices
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWebEngineCore import QWebEnginePage
 from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -66,6 +66,7 @@ class ChatView(QWebEngineView):
 
         self._page = CustomWebEnginePage(self)
         self.setPage(self._page)
+        self.page().setBackgroundColor(QColor("#141417"))
 
         self.bridge = ChatBridge()
         self.bridge.regenerate_requested.connect(self.regenerate_requested)

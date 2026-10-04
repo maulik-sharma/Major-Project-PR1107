@@ -24,6 +24,16 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// Configure marked options
+if (typeof marked !== 'undefined' && marked.setOptions) {
+  marked.setOptions({
+    breaks: true,
+    gfm: true,
+    headerIds: false,
+    mangle: false,
+  });
+}
+
 function scrollToBottom(force = false) {
   const threshold = 120;
   const isNearBottom = window.innerHeight + window.scrollY >= document.body.offsetHeight - threshold;
@@ -75,12 +85,29 @@ function copyTextToClipboard(text, btnElement) {
   });
 }
 
-function renderMarkdown(rawText) {
+/**
+ * Resilient markdown parser with streaming code-fence auto-completion
+ */
+function renderMarkdown(rawText, isStreaming = false) {
+  if (!rawText) return '';
   try {
+    let textToParse = rawText;
+
+    // Resilient fix for unclosed code fence while streaming
+    if (isStreaming) {
+      const codeFenceMatches = textToParse.match(/```/g);
+      if (codeFenceMatches && codeFenceMatches.length % 2 !== 0) {
+        textToParse += '\n```';
+      }
+    }
+
     if (typeof marked !== 'undefined' && marked.parse) {
-      const parsed = marked.parse(rawText);
+      const parsed = marked.parse(textToParse);
       if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
-        return DOMPurify.sanitize(parsed);
+        return DOMPurify.sanitize(parsed, {
+          ADD_ATTR: ['target', 'class', 'style'],
+          ADD_TAGS: ['span', 'code', 'pre', 'img', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'ul', 'ol', 'li', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'strong', 'em', 'del', 'a']
+        });
       }
       return parsed;
     }
@@ -121,6 +148,71 @@ function attachCodeCopyButtons(container) {
 
     pre.insertBefore(header, pre.firstChild);
   });
+}
+
+/**
+ * Extract reasoning from <thought> / <think> tags and separate from visible response
+ */
+function extractThinkingAndContent(rawText, explicitReasoning = '') {
+  let reasoning = explicitReasoning || '';
+  let content = rawText || '';
+
+  // Extract closed <thought>...</thought> or <think>...</think>
+  const fullTagRegex = /<(?:thought|think)>([\s\S]*?)<\/(?:thought|think)>/gi;
+  let match;
+  while ((match = fullTagRegex.exec(content)) !== null) {
+    const thoughtText = match[1].trim();
+    if (thoughtText) {
+      reasoning = reasoning ? (reasoning + '\n\n' + thoughtText) : thoughtText;
+    }
+  }
+  content = content.replace(fullTagRegex, '').trimStart();
+
+  // Extract unclosed <thought> or <think> (e.g. streaming in progress)
+  const openTagMatch = content.match(/<(?:thought|think)>([\s\S]*)$/i);
+  if (openTagMatch) {
+    const unclosedThought = openTagMatch[1];
+    if (unclosedThought) {
+      reasoning = reasoning ? (reasoning + '\n\n' + unclosedThought) : unclosedThought;
+    }
+    content = content.substring(0, openTagMatch.index).trim();
+  }
+
+  return { reasoning, content };
+}
+
+/**
+ * Update message thought disclosure and assistant body
+ */
+function updateMessageDisplay(msgId) {
+  const buf = messageBuffers[msgId];
+  if (!buf) return;
+
+  const { reasoning, content } = extractThinkingAndContent(buf.text, buf.reasoning);
+
+  // Update Thinking Box
+  const thinkingBox = document.getElementById(`thinking-${msgId}`);
+  const thinkingContent = document.getElementById(`thinking-content-${msgId}`);
+  if (thinkingBox && thinkingContent) {
+    if (reasoning && reasoning.trim()) {
+      thinkingBox.style.display = 'block';
+      thinkingContent.innerHTML = renderMarkdown(reasoning, buf.isStreaming);
+      attachCodeCopyButtons(thinkingContent);
+    } else {
+      thinkingBox.style.display = 'none';
+    }
+  }
+
+  // Update Main Assistant Content
+  const contentEl = document.getElementById(`content-${msgId}`);
+  if (contentEl) {
+    if (content || !buf.isStreaming) {
+      contentEl.innerHTML = renderMarkdown(content, buf.isStreaming) + (buf.isStreaming ? '<span class="streaming-cursor"></span>' : '');
+    } else {
+      contentEl.innerHTML = '<span class="streaming-cursor"></span>';
+    }
+    attachCodeCopyButtons(contentEl);
+  }
 }
 
 /**
@@ -224,12 +316,7 @@ function append_text_chunk(msgId, chunk) {
   if (!buf) return;
 
   buf.text += chunk;
-
-  const contentEl = document.getElementById(`content-${msgId}`);
-  if (contentEl) {
-    contentEl.innerHTML = renderMarkdown(buf.text) + (buf.isStreaming ? '<span class="streaming-cursor"></span>' : '');
-    attachCodeCopyButtons(contentEl);
-  }
+  updateMessageDisplay(msgId);
   scrollToBottom(false);
 }
 
@@ -241,13 +328,7 @@ function append_reasoning_chunk(msgId, chunk) {
   if (!buf) return;
 
   buf.reasoning += chunk;
-
-  const thinkingBox = document.getElementById(`thinking-${msgId}`);
-  const thinkingContent = document.getElementById(`thinking-content-${msgId}`);
-  if (thinkingBox && thinkingContent) {
-    thinkingBox.style.display = 'block';
-    thinkingContent.innerText = buf.reasoning;
-  }
+  updateMessageDisplay(msgId);
   scrollToBottom(false);
 }
 
@@ -301,12 +382,7 @@ function finish_assistant_message(msgId, meta = {}) {
   const buf = messageBuffers[msgId];
   if (buf) {
     buf.isStreaming = false;
-  }
-
-  const contentEl = document.getElementById(`content-${msgId}`);
-  if (contentEl && buf) {
-    contentEl.innerHTML = renderMarkdown(buf.text);
-    attachCodeCopyButtons(contentEl);
+    updateMessageDisplay(msgId);
   }
 
   const footer = document.getElementById(`meta-${msgId}`);
@@ -349,8 +425,9 @@ function finish_assistant_message(msgId, meta = {}) {
 
 function copyMessageText(msgId) {
   const buf = messageBuffers[msgId];
-  if (buf && buf.text) {
-    copyTextToClipboard(buf.text);
+  if (buf) {
+    const { content } = extractThinkingAndContent(buf.text, buf.reasoning);
+    copyTextToClipboard(content || buf.text);
   }
 }
 

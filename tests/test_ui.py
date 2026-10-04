@@ -212,3 +212,39 @@ def test_app_module(qapp) -> None:
     assert db_path.name == "modelmesh.db"
     assert db_path.parent.exists()
 
+
+def test_thinking_tag_extraction_on_finish(qapp, tmp_path: Path) -> None:
+    reg = create_test_registry()
+    storage = Storage(tmp_path / "test_thought.db")
+    router = Router(registry=reg)
+    engine = ChatEngine(registry=reg, router=router, storage=storage)
+
+    win = MainWindow(
+        registry=reg,
+        router=router,
+        engine=engine,
+        storage=storage,
+    )
+
+    win.accumulated_text = "<thought>1. Analyzing constraint\n2. Thinking...</thought>Here is the final answer."
+    win.accumulated_reasoning = ""
+    win.current_assistant_msg_id = "test-msg-id"
+    win._on_worker_finished({
+        "model_id": "mock-fast",
+        "endpoint_id": "mock-fast@mock",
+        "provider_id": "mock",
+        "cost_usd": 0.0001,
+        "latency_sec": 0.5,
+        "tokens_in": 10,
+        "tokens_out": 20,
+    })
+
+    msgs = storage.get_messages(win.current_conversation_id)
+    assert len(msgs) == 1
+    asst = msgs[0]
+    assert asst.role == "assistant"
+    assert asst.text_content() == "Here is the final answer."
+    assert asst.reasoning is not None
+    assert "Analyzing constraint" in asst.reasoning
+
+

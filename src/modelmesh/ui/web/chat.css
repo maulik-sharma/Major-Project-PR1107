@@ -1,8 +1,8 @@
 :root {
-  --bg-primary: #0f0f11;
-  --bg-secondary: #18181b;
+  --bg-primary: #141417;
+  --bg-secondary: #1b1b1f;
   --bg-tertiary: #222226;
-  --bg-user-msg: #27272a;
+  --bg-user-msg: #27272c;
   --border-color: rgba(255, 255, 255, 0.08);
   --border-subtle: rgba(255, 255, 255, 0.04);
   --text-primary: #f4f4f6;
@@ -10,8 +10,8 @@
   --text-muted: #71717a;
   --accent-blue: #3b82f6;
   --accent-green: #10b981;
-  --code-bg: #141417;
-  --code-header-bg: #1c1c20;
+  --code-bg: #101013;
+  --code-header-bg: #19191d;
   --font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-serif: "Newsreader", "Georgia", Cambria, "Times New Roman", serif;
   --font-mono: "JetBrains Mono", "Fira Code", Menlo, Monaco, Consolas, monospace;
@@ -304,12 +304,39 @@ body {
   margin: 6px 0 4px 4px;
   font-size: 13px;
   color: var(--text-secondary);
-  line-height: 1.5;
-  white-space: pre-wrap;
+  line-height: 1.55;
+  word-break: break-word;
 }
 
 .thought-box.open .thought-content {
   display: block;
+}
+
+.thought-content p {
+  margin-bottom: 8px;
+}
+
+.thought-content p:last-child {
+  margin-bottom: 0;
+}
+
+.thought-content ul, .thought-content ol {
+  margin: 4px 0 8px 18px;
+}
+
+.thought-content li {
+  margin-bottom: 2px;
+}
+
+.thought-content strong {
+  color: #e4e4e7;
+}
+
+.thought-content code {
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 4px;
+  border-radius: 3px;
 }
 
 /* Failover Status Notice */

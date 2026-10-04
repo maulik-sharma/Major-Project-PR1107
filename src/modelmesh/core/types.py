@@ -137,6 +137,7 @@ class Message:
     parts: List[ContentPart] = field(default_factory=list)
     tool_calls: List[ToolCall] = field(default_factory=list)
     tool_call_id: Optional[str] = None
+    reasoning: Optional[str] = None
     meta: Dict[str, Any] = field(default_factory=dict)
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: float = field(default_factory=time.time)
@@ -150,6 +151,7 @@ class Message:
         cls,
         role: Role,
         text: str,
+        reasoning: Optional[str] = None,
         meta: Optional[Dict[str, Any]] = None,
         msg_id: Optional[str] = None,
     ) -> Message:
@@ -157,6 +159,7 @@ class Message:
         kwargs: Dict[str, Any] = {
             "role": role,
             "parts": [TextPart(text=text)],
+            "reasoning": reasoning,
             "meta": meta or {},
         }
         if msg_id:
@@ -170,6 +173,7 @@ class Message:
             "parts": [p.to_dict() for p in self.parts],
             "tool_calls": [tc.to_dict() for tc in self.tool_calls],
             "tool_call_id": self.tool_call_id,
+            "reasoning": self.reasoning,
             "meta": self.meta,
             "created_at": self.created_at,
         }
@@ -192,6 +196,7 @@ class Message:
             parts=parts,
             tool_calls=tool_calls,
             tool_call_id=data.get("tool_call_id"),
+            reasoning=data.get("reasoning"),
             meta=data.get("meta", {}),
             id=data.get("id", str(uuid.uuid4())),
             created_at=data.get("created_at", time.time()),
