@@ -423,15 +423,42 @@ class ChatEngine:
         )
 
         if self.storage is not None and decision is not None:
-            self.storage.record_routing_log(
-                decision=decision,
-                chosen_candidate=successful_candidate,
-                usage=final_usage,
-                cost_usd=cost_usd,
-                latency_ms=int(total_latency * 1000),
-                ttft_ms=int((time_to_first_token or 0) * 1000),
-                conversation_id=conversation_id,
-            )
+            features = decision.request_features or {}
+            smart_dec = features.get("smart_decision")
+            if smart_dec is not None or decision.strategy_name == "smart_clef":
+                self.storage.record_smart_routing_log(
+                    decision=decision,
+                    chosen_candidate=successful_candidate,
+                    usage=final_usage,
+                    cost_usd=cost_usd,
+                    latency_ms=int(total_latency * 1000),
+                    ttft_ms=int((time_to_first_token or 0) * 1000),
+                    conversation_id=conversation_id,
+                    decision_source=features.get("decision_source", "none"),
+                    decision_provider_id=features.get("decision_provider_id"),
+                    rubric_version=features.get("rubric_version"),
+                    decision_json=json.dumps(smart_dec.get("answers", {})) if isinstance(smart_dec, dict) else None,
+                    need=features.get("need"),
+                    bar=features.get("bar"),
+                    metric_used=features.get("metric_used"),
+                    score_snapshot_id=features.get("score_snapshot_id"),
+                    chosen_q=features.get("chosen_q"),
+                    chosen_score=features.get("chosen_score"),
+                    below_bar=bool(features.get("below_bar", False)),
+                    router_latency_ms=int(features.get("router_latency_ms", 0)),
+                    router_cost_usd=float(features.get("router_cost_usd", 0.0)),
+                    stickiness_outcome=features.get("stickiness_outcome"),
+                )
+            else:
+                self.storage.record_routing_log(
+                    decision=decision,
+                    chosen_candidate=successful_candidate,
+                    usage=final_usage,
+                    cost_usd=cost_usd,
+                    latency_ms=int(total_latency * 1000),
+                    ttft_ms=int((time_to_first_token or 0) * 1000),
+                    conversation_id=conversation_id,
+                )
 
         yield StreamEvent(
             type=StreamEventType.USAGE,

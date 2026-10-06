@@ -22,9 +22,22 @@ class Router:
         self,
         registry: ModelRegistry,
         health_tracker: Optional[EndpointHealthTracker] = None,
+        decision_service: Optional[Any] = None,
+        storage: Optional[Any] = None,
     ) -> None:
         self.registry = registry
         self.health_tracker = health_tracker or EndpointHealthTracker()
+        self.storage = storage
+        self._decision_service = decision_service
+
+    @property
+    def decision_service(self) -> Any:
+        if self._decision_service is None:
+            from modelmesh.core.config.routing_config import load_routing_config
+            from modelmesh.core.routing.smart.decision.service import DecisionService
+            cfg = load_routing_config()
+            self._decision_service = DecisionService(config=cfg, storage=self.storage)
+        return self._decision_service
 
     def route(
         self,
@@ -35,22 +48,7 @@ class Router:
         seed: Optional[int] = None,
         **kwargs: Any,
     ) -> RoutingDecision:
-        """Filter candidates, execute the requested strategy, and return a decision.
-
-        Args:
-            request: The incoming ChatRequest.
-            strategy_name: Name of the strategy ('manual', 'random', 'cheapest_first', 'expensive_first').
-            pinned_model_id: Optional model ID to force (manual mode).
-            pinned_endpoint_id: Optional endpoint ID to force (manual mode).
-            seed: Optional seed for reproducible random selection.
-            **kwargs: Extra parameters passed to strategies.
-
-        Returns:
-            RoutingDecision object with chosen candidate and fallback chain.
-
-        Raises:
-            RoutingError: If no candidate satisfies the request requirements.
-        """
+        """Filter candidates, execute the requested strategy, and return a decision."""
         all_candidates = self.registry.candidates(enabled_only=True)
         if not all_candidates:
             raise RoutingError("No enabled models or endpoints available in registry.")
@@ -74,7 +72,35 @@ class Router:
             if real_candidates:
                 eligible = real_candidates
 
-        strategy = get_strategy(strategy_name)
+        # Support alias 'auto' -> 'smart_clef'
+        effective_strategy_name = "smart_clef" if strategy_name == "auto" else strategy_name
+        strategy = get_strategy(effective_strategy_name)
+
+        # If strategy needs decision (Smart Router), perform decision call before ranking
+        if getattr(strategy, "needs_decision", False):
+            if "smart_decision" not in features:
+                if "smart_decision" in kwargs:
+                    features["smart_decision"] = kwargs["smart_decision"]
+                else:
+                    dec_res = self.decision_service.get_decision(
+                        messages=request.messages,
+                        tools_enabled=bool(request.tools),
+                        tools_count=len(request.tools),
+                    )
+                    features["smart_decision"] = {
+                        "answers": dec_res.answers,
+                        "source": dec_res.source,
+                        "provider_id": dec_res.provider_id,
+                        "model": dec_res.model,
+                        "latency_ms": dec_res.latency_ms,
+                        "usage": dec_res.usage.to_dict(),
+                    }
+
+            # Fetch latest snapshot from score store if available
+            if self.storage is not None and "snapshot_override" not in kwargs:
+                from modelmesh.core.scores.snapshots import ScoreStore
+                store = ScoreStore(self.storage)
+                kwargs["snapshot_override"] = store.get_latest_snapshot()
 
         decision = strategy.rank(
             eligible_candidates=eligible,

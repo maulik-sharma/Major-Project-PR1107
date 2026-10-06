@@ -206,10 +206,12 @@ class MainWindow(QMainWindow):
     def _populate_strategy_combo(self) -> None:
         """Populate the routing strategy selector."""
         self.strategy_combo.clear()
+        self.strategy_combo.addItem("Auto · Smart", "smart_clef")
         self.strategy_combo.addItem("Auto: Cheapest First", "cheapest_first")
         self.strategy_combo.addItem("Auto: Expensive First", "expensive_first")
         self.strategy_combo.addItem("Auto: Random Baseline", "random")
         self.strategy_combo.addItem("Manual Selection", "manual")
+
 
     def _populate_model_combo(self) -> None:
         """Fill model selector dropdown with available models and endpoints."""
@@ -451,10 +453,12 @@ class MainWindow(QMainWindow):
             provider_name=data.get("provider_id", ""),
             strategy_name=data.get("strategy", ""),
             reason=data.get("reason", ""),
+            metadata=data.get("metadata", {}),
         )
         self.status_bar.showMessage(
             f"Streaming from '{data.get('model_id')}' via {data.get('provider_id')}..."
         )
+
 
     def _on_worker_fallback(self, data: Dict[str, Any]) -> None:
         self.chat_view.show_fallback_notice(

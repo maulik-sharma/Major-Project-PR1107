@@ -506,18 +506,39 @@ function finish_assistant_message(msgId, meta = {}) {
   }
 
   const footer = document.getElementById(`meta-${msgId}`);
+  const row = document.getElementById(`msg-${msgId}`);
   if (footer) {
     let items = [];
     const model = meta.model_id || meta.model_name || '';
     const prov = meta.provider_id || meta.provider_name || '';
-    const strat = meta.strategy || meta.strategy_name || '';
+    let strat = meta.strategy || meta.strategy_name || '';
+    if (strat === 'smart_clef') {
+      strat = 'Auto · Smart';
+    }
     const reason = meta.reason || '';
+
+    const decMeta = meta.metadata || {};
+    const decSource = decMeta.decision_source || meta.decision_source || '';
 
     if (model) items.push(`<span>${model}</span>`);
     if (prov) items.push(`<span>${prov}</span>`);
     if (strat) {
       const tooltip = reason ? ` title="${reason.replace(/"/g, '&quot;')}"` : '';
       items.push(`<span${tooltip}>${strat}</span>`);
+    }
+
+    if (decSource) {
+      if (decSource === 'cloudflare') {
+        items.push('<span class="badge badge-source" title="Decided by Cloudflare Clef-flash">Clef-flash</span>');
+      } else if (decSource === 'heuristic_fallback') {
+        items.push('<span class="badge badge-warning" title="Fell back to local heuristic analyzer">Heuristic Fallback</span>');
+      } else if (decSource === 'cached') {
+        items.push('<span class="badge badge-source" title="Served from SQLite decision cache">Cached</span>');
+      } else if (decSource === 'heuristic') {
+        items.push('<span class="badge badge-source" title="Local heuristic analyzer">Heuristic</span>');
+      } else if (decSource === 'mock') {
+        items.push('<span class="badge badge-source" title="Mock deterministic analyzer">Mock</span>');
+      }
     }
 
     if (meta.latency_sec !== undefined) {
@@ -531,19 +552,130 @@ function finish_assistant_message(msgId, meta = {}) {
     }
 
     let metaHtml = items.join('<span class="meta-separator">·</span>');
+    metaHtml += `<span class="meta-separator" style="margin: 0 4px;"></span>`;
+
+    const hasInsights = decMeta.task || decMeta.need !== undefined || decMeta.smart_decision;
+    if (hasInsights) {
+      metaHtml += `<button class="insights-btn" onclick="toggleInsights('${msgId}')" title="Toggle Smart Routing Insights">⚡ Insights</button> `;
+    }
+
     metaHtml += `
-      <span class="meta-separator" style="margin: 0 4px;"></span>
       <button class="action-btn" onclick="copyMessageText('${msgId}')" title="Copy reply">Copy</button>
       <button class="action-btn" onclick="regenerateMessage('${msgId}')" title="Retry generation">Retry</button>
     `;
 
     footer.innerHTML = metaHtml;
+
+    if (hasInsights && row) {
+      let panel = document.getElementById(`insights-${msgId}`);
+      if (!panel) {
+        panel = document.createElement('div');
+        panel.className = 'insights-panel';
+        panel.id = `insights-${msgId}`;
+        panel.style.display = 'none';
+        row.appendChild(panel);
+      }
+      panel.innerHTML = buildInsightsHtml(msgId, meta);
+    }
   }
 
   scrollToBottom(false);
 }
 
+function buildInsightsHtml(msgId, meta) {
+  const decMeta = meta.metadata || {};
+  const smartDec = decMeta.smart_decision || {};
+  const answers = smartDec.answers || {};
+
+  const task = decMeta.task || (answers.task && answers.task.choice) || 'general';
+  const diffScore = (answers.difficulty && answers.difficulty.score !== undefined) ? answers.difficulty.score : '-';
+  const precScore = (answers.precision && answers.precision.score !== undefined) ? answers.precision.score : '-';
+  const needVal = decMeta.need !== undefined ? Number(decMeta.need).toFixed(2) : '-';
+  const barVal = decMeta.bar !== undefined ? Number(decMeta.bar).toFixed(2) : '-';
+  const metric = decMeta.metric_used || 'intelligence';
+  const qChosen = decMeta.chosen_q !== undefined ? Number(decMeta.chosen_q).toFixed(2) : '-';
+  const latencyMs = decMeta.router_latency_ms !== undefined ? `${Number(decMeta.router_latency_ms).toFixed(0)} ms` : '-';
+  const source = decMeta.decision_source || 'clef-flash';
+
+  let candidatesHtml = '';
+  if (Array.isArray(decMeta.eligible_candidates) && decMeta.eligible_candidates.length > 0) {
+    const rows = decMeta.eligible_candidates.map(c => {
+      const isChosen = c.model_id === meta.model_id;
+      const qVal = c.q !== undefined ? Number(c.q).toFixed(2) : '-';
+      return `
+        <tr class="${isChosen ? 'chosen-row' : ''}">
+          <td>${c.model_id}</td>
+          <td>${qVal}</td>
+          <td>${isChosen ? '✓ Selected' : 'Admitted'}</td>
+        </tr>
+      `;
+    }).join('');
+
+    candidatesHtml = `
+      <div style="font-size: 11px; font-weight: 600; margin-top: 8px; color: var(--text-muted); text-transform: uppercase;">Evaluated Candidates</div>
+      <table class="insights-table">
+        <thead>
+          <tr><th>Model</th><th>Quality (q)</th><th>Status</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  let warningHtml = '';
+  if (decMeta.below_bar) {
+    warningHtml = `
+      <div style="margin-top: 8px; padding: 6px 10px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 4px; color: #fbbf24; font-size: 11px;">
+        ⚠ Pool capped the bar / Below-bar fallback candidate chosen
+      </div>
+    `;
+  }
+
+  return `
+    <div class="insights-header">
+      <span>⚡ Smart Routing Insights</span>
+      <span style="font-size: 11px; color: var(--text-muted);">${source} · ${latencyMs}</span>
+    </div>
+    <div class="insights-grid">
+      <div class="insights-card">
+        <div class="insights-card-label">Task</div>
+        <div class="insights-card-value">${task}</div>
+      </div>
+      <div class="insights-card">
+        <div class="insights-card-label">Difficulty</div>
+        <div class="insights-card-value">${diffScore}/4</div>
+      </div>
+      <div class="insights-card">
+        <div class="insights-card-label">Precision</div>
+        <div class="insights-card-value">${precScore}/3</div>
+      </div>
+      <div class="insights-card">
+        <div class="insights-card-label">Need / Bar</div>
+        <div class="insights-card-value">${needVal} / ${barVal}</div>
+      </div>
+      <div class="insights-card">
+        <div class="insights-card-label">Metric</div>
+        <div class="insights-card-value">${metric}</div>
+      </div>
+      <div class="insights-card">
+        <div class="insights-card-label">Quality (q)</div>
+        <div class="insights-card-value">${qChosen}</div>
+      </div>
+    </div>
+    ${warningHtml}
+    ${candidatesHtml}
+  `;
+}
+
+function toggleInsights(msgId) {
+  const panel = document.getElementById(`insights-${msgId}`);
+  if (panel) {
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  }
+}
+
 function copyMessageText(msgId) {
+
   const buf = messageBuffers[msgId];
   if (buf) {
     const { content } = extractThinkingAndContent(buf.text, buf.reasoning);

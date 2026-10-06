@@ -144,6 +144,7 @@ class ChatView(QWebEngineView):
         provider_name: str = "",
         strategy_name: str = "",
         reason: str = "",
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Initialize an assistant message block."""
         self._run_js(
@@ -153,7 +154,9 @@ class ChatView(QWebEngineView):
             provider_name,
             strategy_name,
             reason,
+            metadata or {},
         )
+
 
     def append_token(self, msg_id: str, token: str) -> None:
         """Queue a text delta to be flushed."""

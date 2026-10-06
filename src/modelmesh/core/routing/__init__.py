@@ -18,6 +18,7 @@ from modelmesh.core.routing import cheapest
 from modelmesh.core.routing import expensive
 from modelmesh.core.routing import manual
 from modelmesh.core.routing import random_
+from modelmesh.core.routing import smart
 
 __all__ = [
     "Strategy",
@@ -32,4 +33,5 @@ __all__ = [
     "expensive",
     "manual",
     "random_",
+    "smart",
 ]

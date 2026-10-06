@@ -1,10 +1,12 @@
-"""Headless CLI test harness for ModelMesh engine and routing."""
+"""Headless CLI test harness for ModelMesh engine, routing, and scores."""
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
+from typing import Optional
 
 # Ensure src is in sys.path when script is run directly
 _src_dir = str(Path(__file__).resolve().parent.parent)
@@ -14,16 +16,117 @@ if _src_dir not in sys.path:
 from modelmesh.core.engine import ChatEngine
 from modelmesh.core.keys import load_env
 from modelmesh.core.registry import load_default_registry
+from modelmesh.core.routing.router import Router
+from modelmesh.core.scores.aa_client import (
+    ATTRIBUTION_TEXT,
+    ArtificialAnalysisClient,
+)
+from modelmesh.core.scores.matcher import suggest_model_slugs
+from modelmesh.core.scores.snapshots import (
+    ScoreSnapshot,
+    ScoreStore,
+    resolve_effective_scores,
+)
+from modelmesh.core.storage import Storage
 from modelmesh.core.types import ChatRequest, Message, StreamEventType, Usage
 
 
+def handle_scores_command(args: argparse.Namespace, storage: Storage) -> int:
+    """Handle CLI subcommands for intelligence scores."""
+    store = ScoreStore(storage)
+    registry = load_default_registry()
+
+    if args.scores_action == "refresh":
+        print("Fetching latest models from Artificial Analysis API...")
+        client = ArtificialAnalysisClient()
+        try:
+            models, index_version, remaining = client.fetch_all_models()
+            snap = ScoreSnapshot.from_raw(
+                models_list=models,
+                index_version=index_version,
+                rate_limit_remaining=remaining,
+            )
+            sid = store.save_snapshot(snap)
+            print(f"Success! Saved snapshot '{sid}' with {len(models)} models (Index version: {index_version}).")
+            if remaining is not None:
+                print(f"API Rate limit remaining: {remaining}/100 requests.")
+            print(f"\n{ATTRIBUTION_TEXT}")
+            return 0
+        except Exception as exc:
+            print(f"Error refreshing scores: {exc}", file=sys.stderr)
+            return 1
+
+    elif args.scores_action == "show":
+        snapshot = store.get_latest_snapshot()
+        print(f"\n=== ModelMesh Model Intelligence Scores ===")
+        if snapshot:
+            print(f"Active Snapshot: {snapshot.id} (Fetched: {snapshot.fetched_at}, Index v{snapshot.index_version})")
+        else:
+            print("Notice: No snapshot found in database. Run 'modelmesh scores refresh' to fetch from AA.")
+
+        print(f"{'Model ID':<22} | {'Linked AA Slug':<30} | {'Intel':<6} | {'Code':<6} | {'Agent':<6} | {'Status'}")
+        print("-" * 90)
+        for m in registry.models():
+            eff = resolve_effective_scores(m, snapshot)
+            intel_s = f"{eff.intelligence:.1f}" if eff.intelligence is not None else "-"
+            code_s = f"{eff.coding:.1f}" if eff.coding is not None else "-"
+            agent_s = f"{eff.agentic:.1f}" if eff.agentic is not None else "-"
+            slug_s = (m.scores.aa_slug or "-")[:28]
+            status = eff.source
+            print(f"{m.id:<22} | {slug_s:<30} | {intel_s:<6} | {code_s:<6} | {agent_s:<6} | {status}")
+
+        print(f"\n{ATTRIBUTION_TEXT}\n")
+        return 0
+
+    elif args.scores_action == "auto-match":
+        snapshot = store.get_latest_snapshot()
+        if not snapshot:
+            print("Error: No score snapshot found. Run 'scores refresh' first.", file=sys.stderr)
+            return 1
+        raw_models = snapshot.raw_payload.get("models", [])
+        print("\n=== Proposed Slug Matches for Unlinked Models ===")
+        for m in registry.models():
+            if not m.scores.aa_slug:
+                suggestions = suggest_model_slugs(m.id, raw_models, limit=3)
+                print(f"\nModel: {m.id} ({m.display_name})")
+                if suggestions:
+                    for s in suggestions:
+                        print(f"  -> {s['slug']:<32} | Intel: {s.get('intelligence')} | Similarity: {s['similarity']}")
+                else:
+                    print("  -> No close matches found.")
+        print(f"\n{ATTRIBUTION_TEXT}\n")
+        return 0
+
+    return 0
+
+
 def main() -> int:
+    # Check if scores subcommand is invoked
+    if len(sys.argv) > 1 and sys.argv[1] == "scores":
+        scores_parser = argparse.ArgumentParser(
+            description="ModelMesh Model Intelligence Scores Manager",
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        )
+        scores_parser.add_argument("subcommand", choices=["scores"])
+        scores_parser.add_argument("scores_action", choices=["refresh", "show", "auto-match"], help="Score action")
+        args = scores_parser.parse_args()
+
+        load_env()
+        storage = Storage()
+        return handle_scores_command(args, storage)
+
     parser = argparse.ArgumentParser(
-        description="ModelMesh Headless CLI Test Harness",
+        description="ModelMesh Headless CLI Test Harness and Scoring Manager",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("prompt", nargs="?", default="Hello, test prompt from ModelMesh CLI!", help="User prompt to send")
-    parser.add_argument("--strategy", choices=["random", "cheapest_first", "expensive_first", "manual"], default="manual", help="Routing strategy")
+
+    parser.add_argument("prompt", nargs="?", default="Hello! Could you explain the difference between a mutex and a semaphore in operating systems?", help="User prompt to send")
+    parser.add_argument(
+        "--strategy",
+        choices=["random", "cheapest_first", "expensive_first", "manual", "smart_clef", "auto"],
+        default="smart_clef",
+        help="Routing strategy",
+    )
     parser.add_argument("--model", type=str, default=None, help="Target model ID (manual mode)")
     parser.add_argument("--endpoint", type=str, default=None, help="Specific target endpoint ID (manual mode)")
     parser.add_argument("--config", type=str, default=None, help="Path to custom providers.yaml or config dir")
@@ -35,18 +138,14 @@ def main() -> int:
     env_path = Path(args.env_file) if args.env_file else None
     load_env(env_path)
 
-    # Load registry
+    storage = Storage()
+    prompt_text = args.prompt
     config_dir = Path(args.config) if args.config else None
     registry = load_default_registry(config_dir)
 
-    # Initialize Router, Storage, and Engine
-    from modelmesh.core.routing.router import Router
-    from modelmesh.core.storage import Storage
-    router = Router(registry=registry)
-    storage = Storage()
+    router = Router(registry=registry, storage=storage)
     engine = ChatEngine(registry=registry, router=router, storage=storage)
 
-    # Select candidate or manual pins if specified
     candidate = None
     pinned_model = None
     pinned_endpoint = None
@@ -61,10 +160,11 @@ def main() -> int:
         pinned_model = args.model
 
     request = ChatRequest(
-        messages=[Message.from_text(role="user", text=args.prompt)]
+        messages=[Message.from_text(role="user", text=prompt_text)]
     )
 
-    print(f"\n--- ModelMesh Turn Start (Strategy: {args.strategy}) ---")
+    strat_label = "smart_clef" if args.strategy == "auto" else args.strategy
+    print(f"\n--- ModelMesh Turn Start (Strategy: {strat_label}) ---")
 
     done_event_data = {}
     chosen_candidate = None
@@ -74,7 +174,7 @@ def main() -> int:
         events = engine.run_turn(
             request=request,
             candidate=candidate,
-            strategy_name=args.strategy,
+            strategy_name=strat_label,
             pinned_model_id=pinned_model,
             pinned_endpoint_id=pinned_endpoint,
         )

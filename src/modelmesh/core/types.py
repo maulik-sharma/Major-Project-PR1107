@@ -342,6 +342,73 @@ class EndpointConfig:
 
 
 @dataclass
+class ManualScoresConfig:
+    """Optional manual quality score overrides for a model."""
+    intelligence: Optional[float] = None
+    coding: Optional[float] = None
+    agentic: Optional[float] = None
+    arena_text_elo: Optional[float] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "intelligence": self.intelligence,
+            "coding": self.coding,
+            "agentic": self.agentic,
+            "arena_text_elo": self.arena_text_elo,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> ManualScoresConfig:
+        return cls(
+            intelligence=float(data["intelligence"]) if data.get("intelligence") is not None else None,
+            coding=float(data["coding"]) if data.get("coding") is not None else None,
+            agentic=float(data["agentic"]) if data.get("agentic") is not None else None,
+            arena_text_elo=float(data["arena_text_elo"]) if data.get("arena_text_elo") is not None else None,
+        )
+
+
+@dataclass
+class ModelScoresConfig:
+    """Scores metadata linking a model to an AA snapshot slug and manual overrides."""
+    aa_slug: Optional[str] = None
+    manual: ManualScoresConfig = field(default_factory=ManualScoresConfig)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "aa_slug": self.aa_slug,
+            "manual": self.manual.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> ModelScoresConfig:
+        raw_manual = data.get("manual") or {}
+        return cls(
+            aa_slug=data.get("aa_slug"),
+            manual=ManualScoresConfig.from_dict(raw_manual),
+        )
+
+
+@dataclass
+class ModelRoutingConfig:
+    """Model-level routing permissions and task filters."""
+    routable: bool = True
+    admitted_tasks: List[str] = field(default_factory=lambda: ["all"])
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "routable": self.routable,
+            "admitted_tasks": self.admitted_tasks,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> ModelRoutingConfig:
+        return cls(
+            routable=data.get("routable", True),
+            admitted_tasks=data.get("admitted_tasks", ["all"]),
+        )
+
+
+@dataclass
 class ModelConfig:
     """Logical LLM configuration representing a model across endpoints."""
     id: str
@@ -354,6 +421,8 @@ class ModelConfig:
     enabled: bool = True
     endpoint_policy: EndpointPolicy = "priority"
     endpoints: List[EndpointConfig] = field(default_factory=list)
+    scores: ModelScoresConfig = field(default_factory=ModelScoresConfig)
+    routing: ModelRoutingConfig = field(default_factory=ModelRoutingConfig)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -367,10 +436,14 @@ class ModelConfig:
             "enabled": self.enabled,
             "endpoint_policy": self.endpoint_policy,
             "endpoints": [ep.to_dict() for ep in self.endpoints],
+            "scores": self.scores.to_dict(),
+            "routing": self.routing.to_dict(),
         }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> ModelConfig:
+        raw_scores = data.get("scores") or {}
+        raw_routing = data.get("routing") or {}
         return cls(
             id=data["id"],
             display_name=data.get("display_name", data["id"]),
@@ -382,6 +455,8 @@ class ModelConfig:
             enabled=data.get("enabled", True),
             endpoint_policy=data.get("endpoint_policy", "priority"),
             endpoints=[EndpointConfig.from_dict(ep) for ep in data.get("endpoints", [])],
+            scores=ModelScoresConfig.from_dict(raw_scores),
+            routing=ModelRoutingConfig.from_dict(raw_routing),
         )
 
 

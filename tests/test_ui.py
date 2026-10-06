@@ -149,10 +149,12 @@ def test_chat_worker_execution(qapp, tmp_path: Path) -> None:
 def test_settings_dialog(qapp) -> None:
     reg = create_test_registry()
     dlg = SettingsDialog(registry=reg)
-    assert dlg.tabs.count() == 4  # Providers, Endpoints, Routing, Appearance
+    assert dlg.tabs.count() == 5  # Providers, Endpoints, Scores, Routing, Appearance
     assert dlg.providers_tab.provider_list.count() >= 1
     assert dlg.models_tab.table.rowCount() >= 1
     assert dlg.models_tab.table.columnCount() == 8
+    assert dlg.scores_tab.table.columnCount() == 7
+    assert dlg.scores_tab.attribution_label.text() == "Model scores: Artificial Analysis"
 
     # Test appearance theme change
     theme_events = []
@@ -193,16 +195,18 @@ def test_main_window_lifecycle(qapp, tmp_path: Path) -> None:
 
     # Check initial conversation creation and dropdowns
     assert win.current_conversation_id is not None
-    assert win.strategy_combo.count() == 4
+    assert win.strategy_combo.count() == 5
     assert win.model_combo.count() >= 1
 
-    # Strategy combo default is cheapest_first -> model_combo is disabled
+    # Strategy combo default is smart_clef or cheapest_first -> model_combo is disabled
     assert not win.model_combo.isEnabled()
 
     # Switching to manual enables model_combo
-    win.strategy_combo.setCurrentIndex(3)  # Manual Selection
+    manual_idx = win.strategy_combo.findData("manual")
+    win.strategy_combo.setCurrentIndex(manual_idx)
     assert win.strategy_combo.currentData() == "manual"
     assert win.model_combo.isEnabled()
+
 
     # Send a message in manual mode
     win._on_send_message("Hello from unit test", [])

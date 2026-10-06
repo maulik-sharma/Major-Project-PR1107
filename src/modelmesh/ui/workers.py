@@ -87,6 +87,7 @@ class ChatWorker(QThread):
                         "strategy": event.data.get("strategy", self.strategy_name),
                         "reason": event.data.get("reason", ""),
                         "decision_id": event.data.get("decision_id", ""),
+                        "metadata": event.data.get("metadata", {}),
                     })
 
                 elif event.type == StreamEventType.FALLBACK:
@@ -136,6 +137,10 @@ class ChatWorker(QThread):
                         "latency_sec": event.data.get("latency_sec", 0.0) if event.data else 0.0,
                         "tokens_in": event.usage.input_tokens if event.usage else 0,
                         "tokens_out": event.usage.output_tokens if event.usage else 0,
+                        "strategy": event.data.get("strategy", self.strategy_name) if event.data else self.strategy_name,
+                        "reason": event.data.get("reason", "") if event.data else "",
+                        "decision_id": event.data.get("decision_id", "") if event.data else "",
+                        "metadata": event.data.get("metadata", {}) if event.data else {},
                     })
 
                 elif event.type == StreamEventType.ERROR:
@@ -149,3 +154,89 @@ class ChatWorker(QThread):
                 "error": str(exc),
                 "category": "unknown",
             })
+
+
+class ScoresRefreshWorker(QThread):
+    """QThread fetching fresh score snapshot from Artificial Analysis."""
+
+    started_refresh = pyqtSignal()
+    finished_refresh = pyqtSignal(dict)
+    error_occurred = pyqtSignal(str)
+
+    def __init__(self, api_key: Optional[str] = None, parent: Optional[Any] = None) -> None:
+        super().__init__(parent)
+        self.api_key = api_key
+
+    def run(self) -> None:
+        self.started_refresh.emit()
+        try:
+            from modelmesh.core.scores.aa_client import ArtificialAnalysisClient
+            from modelmesh.core.scores.snapshots import ScoreStore
+            from modelmesh.core.storage import get_default_storage
+
+            client = ArtificialAnalysisClient(api_key=self.api_key)
+            snapshot = client.fetch_snapshot()
+
+            storage = get_default_storage()
+            store = ScoreStore(storage)
+            store.save_snapshot(snapshot)
+
+            self.finished_refresh.emit({
+                "snapshot_id": snapshot.id,
+                "models_count": len(snapshot.models_by_slug),
+                "index_version": snapshot.index_version,
+                "rate_limit_remaining": snapshot.rate_limit_remaining,
+                "fetched_at": snapshot.fetched_at,
+            })
+        except Exception as exc:
+            self.error_occurred.emit(str(exc))
+
+
+class DecisionTestWorker(QThread):
+    """QThread evaluating a test prompt against the DecisionService off the UI thread."""
+
+    test_completed = pyqtSignal(dict)
+    error_occurred = pyqtSignal(str)
+
+    def __init__(
+        self,
+        prompt_text: str,
+        provider_id: Optional[str] = None,
+        parent: Optional[Any] = None,
+    ) -> None:
+        super().__init__(parent)
+        self.prompt_text = prompt_text
+        self.provider_id = provider_id
+
+    def run(self) -> None:
+        try:
+            from modelmesh.core.config.routing_config import load_routing_config
+            from modelmesh.core.routing.smart.decision.service import DecisionService
+            from modelmesh.core.storage import get_default_storage
+            from modelmesh.core.types import ChatRequest, Message, TextPart
+
+            config = load_routing_config()
+            storage = get_default_storage()
+            service = DecisionService(config=config, storage=storage)
+
+            req = ChatRequest(
+                messages=[Message(role="user", parts=[TextPart(text=self.prompt_text)])]
+            )
+
+            result = service.evaluate(
+                request=req,
+                provider_override=self.provider_id,
+            )
+
+            self.test_completed.emit({
+                "decision_id": result.decision_id,
+                "source": result.source,
+                "provider_id": result.provider_id,
+                "latency_ms": result.latency_ms,
+                "cached": result.cached,
+                "answers": result.answers,
+                "error": result.error,
+            })
+        except Exception as exc:
+            self.error_occurred.emit(str(exc))
+

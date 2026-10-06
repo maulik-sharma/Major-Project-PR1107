@@ -80,6 +80,7 @@ class Strategy(ABC):
     """Abstract base class for all routing strategies."""
 
     name: str
+    needs_decision: bool = False
 
     @abstractmethod
     def rank(

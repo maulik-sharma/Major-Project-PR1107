@@ -17,7 +17,7 @@ from modelmesh.core.types import (
     Usage,
 )
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA_SQL = """
 PRAGMA journal_mode = WAL;
@@ -71,7 +71,42 @@ CREATE TABLE IF NOT EXISTS routing_log (
     cached_tokens INTEGER DEFAULT 0,
     reasoning_tokens INTEGER DEFAULT 0,
     estimated_cost REAL DEFAULT 0.0,
-    error_category TEXT
+    error_category TEXT,
+    decision_source TEXT DEFAULT 'none',
+    decision_provider_id TEXT,
+    rubric_version INTEGER,
+    decision_json TEXT,
+    need REAL,
+    bar REAL,
+    metric_used TEXT,
+    score_snapshot_id TEXT,
+    chosen_q REAL,
+    chosen_score REAL,
+    below_bar INTEGER DEFAULT 0,
+    router_latency_ms INTEGER DEFAULT 0,
+    router_cost_usd REAL DEFAULT 0.0,
+    stickiness_outcome TEXT,
+    cost_if_cheapest REAL,
+    cost_if_strongest REAL
+);
+
+CREATE TABLE IF NOT EXISTS score_snapshots (
+    id TEXT PRIMARY KEY,
+    source TEXT NOT NULL,
+    fetched_at REAL NOT NULL,
+    index_version TEXT,
+    payload_json TEXT NOT NULL,
+    rate_limit_remaining INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS decision_cache (
+    key TEXT PRIMARY KEY,
+    decision_provider TEXT NOT NULL,
+    rubric_version INTEGER NOT NULL,
+    state_hash TEXT NOT NULL,
+    answers_json TEXT NOT NULL,
+    router_latency_ms INTEGER DEFAULT 0,
+    created_at REAL NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS attachments (
@@ -98,6 +133,19 @@ CREATE TABLE IF NOT EXISTS tool_runs (
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_routing_created ON routing_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_routing_endpoint ON routing_log(chosen_endpoint_id);
+CREATE INDEX IF NOT EXISTS idx_score_snapshots_source ON score_snapshots(source, fetched_at);
+CREATE INDEX IF NOT EXISTS idx_decision_cache_created ON decision_cache(created_at);
+
+CREATE VIEW IF NOT EXISTS endpoint_stats AS
+SELECT
+    chosen_endpoint_id,
+    provider_id,
+    COUNT(*) as total_requests,
+    AVG(total_latency_ms) as avg_latency_ms,
+    AVG(ttft_ms) as avg_ttft_ms,
+    SUM(CASE WHEN error_category IS NOT NULL THEN 1 ELSE 0 END) * 1.0 / COUNT(*) as error_rate
+FROM routing_log
+GROUP BY chosen_endpoint_id, provider_id;
 """
 
 
@@ -108,7 +156,13 @@ def get_default_db_path() -> Path:
     return data_dir / "modelmesh.db"
 
 
+def get_default_storage(db_path: Optional[Path | str] = None) -> Storage:
+    """Return a Storage instance initialized with the default database path."""
+    return Storage(db_path=db_path)
+
+
 class Storage:
+
     """Thread-safe SQLite storage layer for ModelMesh."""
 
     def __init__(self, db_path: Optional[Path | str] = None) -> None:
@@ -143,6 +197,32 @@ class Storage:
         with self._lock:
             with self._get_connection() as conn:
                 conn.executescript(SCHEMA_SQL)
+                # Defensive column migrations on routing_log
+                existing_cols = {
+                    row["name"] for row in conn.execute("PRAGMA table_info(routing_log)").fetchall()
+                }
+                new_columns = [
+                    ("decision_source", "TEXT DEFAULT 'none'"),
+                    ("decision_provider_id", "TEXT"),
+                    ("rubric_version", "INTEGER"),
+                    ("decision_json", "TEXT"),
+                    ("need", "REAL"),
+                    ("bar", "REAL"),
+                    ("metric_used", "TEXT"),
+                    ("score_snapshot_id", "TEXT"),
+                    ("chosen_q", "REAL"),
+                    ("chosen_score", "REAL"),
+                    ("below_bar", "INTEGER DEFAULT 0"),
+                    ("router_latency_ms", "INTEGER DEFAULT 0"),
+                    ("router_cost_usd", "REAL DEFAULT 0.0"),
+                    ("stickiness_outcome", "TEXT"),
+                    ("cost_if_cheapest", "REAL"),
+                    ("cost_if_strongest", "REAL"),
+                ]
+                for col_name, col_type in new_columns:
+                    if col_name not in existing_cols:
+                        conn.execute(f"ALTER TABLE routing_log ADD COLUMN {col_name} {col_type};")
+
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION};")
                 conn.commit()
 
@@ -366,6 +446,100 @@ class Storage:
                 conn.commit()
         return log_id
 
+    def record_smart_routing_log(
+        self,
+        decision: RoutingDecision,
+        chosen_candidate: Candidate,
+        usage: Usage,
+        cost_usd: float,
+        latency_ms: int,
+        ttft_ms: int = 0,
+        conversation_id: Optional[str] = None,
+        message_id: Optional[str] = None,
+        error_category: Optional[str] = None,
+        decision_source: str = "none",
+        decision_provider_id: Optional[str] = None,
+        rubric_version: Optional[int] = None,
+        decision_json: Optional[str] = None,
+        need: Optional[float] = None,
+        bar: Optional[float] = None,
+        metric_used: Optional[str] = None,
+        score_snapshot_id: Optional[str] = None,
+        chosen_q: Optional[float] = None,
+        chosen_score: Optional[float] = None,
+        below_bar: bool = False,
+        router_latency_ms: int = 0,
+        router_cost_usd: float = 0.0,
+        stickiness_outcome: Optional[str] = None,
+        cost_if_cheapest: Optional[float] = None,
+        cost_if_strongest: Optional[float] = None,
+    ) -> str:
+        log_id = decision.decision_id or str(uuid.uuid4())
+        fallback_ids = [c.endpoint_id for c in decision.fallback_chain]
+        with self._lock:
+            with self._get_connection() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO routing_log (
+                        id, created_at, conversation_id, message_id, strategy,
+                        chosen_model_id, chosen_endpoint_id, provider_id,
+                        fallback_chain_json, candidates_scores_json, features_json,
+                        reason, cache_status, ttft_ms, total_latency_ms,
+                        tokens_in, tokens_out, cached_tokens, reasoning_tokens,
+                        estimated_cost, error_category, decision_source,
+                        decision_provider_id, rubric_version, decision_json,
+                        need, bar, metric_used, score_snapshot_id, chosen_q,
+                        chosen_score, below_bar, router_latency_ms,
+                        router_cost_usd, stickiness_outcome, cost_if_cheapest,
+                        cost_if_strongest
+                    ) VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    )
+                    """,
+                    (
+                        log_id,
+                        decision.created_at,
+                        conversation_id,
+                        message_id,
+                        decision.strategy_name,
+                        chosen_candidate.model_id,
+                        chosen_candidate.endpoint_id,
+                        chosen_candidate.provider_id,
+                        json.dumps(fallback_ids),
+                        json.dumps(decision.eligible_candidates),
+                        json.dumps(decision.request_features),
+                        decision.reason,
+                        "hit" if decision_source == "cache" else "miss",
+                        ttft_ms,
+                        latency_ms,
+                        usage.input_tokens,
+                        usage.output_tokens,
+                        usage.cached_tokens,
+                        usage.reasoning_tokens,
+                        cost_usd,
+                        error_category,
+                        decision_source,
+                        decision_provider_id,
+                        rubric_version,
+                        decision_json,
+                        need,
+                        bar,
+                        metric_used,
+                        score_snapshot_id,
+                        chosen_q,
+                        chosen_score,
+                        1 if below_bar else 0,
+                        router_latency_ms,
+                        router_cost_usd,
+                        stickiness_outcome,
+                        cost_if_cheapest,
+                        cost_if_strongest,
+                    ),
+                )
+                conn.commit()
+        return log_id
+
     def get_routing_logs(self, limit: int = 100) -> List[Dict[str, Any]]:
         with self._lock:
             with self._get_connection() as conn:
@@ -375,11 +549,102 @@ class Storage:
                 ).fetchall()
                 return [dict(r) for r in rows]
 
+    def save_score_snapshot(
+        self,
+        source: str,
+        index_version: Optional[str],
+        payload: Dict[str, Any],
+        rate_limit_remaining: Optional[int] = None,
+        snapshot_id: Optional[str] = None,
+        fetched_at: Optional[float] = None,
+    ) -> str:
+        sid = snapshot_id or str(uuid.uuid4())
+        ts = fetched_at or time.time()
+        with self._lock:
+            with self._get_connection() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO score_snapshots (id, source, fetched_at, index_version, payload_json, rate_limit_remaining)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (sid, source, ts, index_version, json.dumps(payload), rate_limit_remaining),
+                )
+                conn.commit()
+        return sid
+
+    def get_latest_score_snapshot(self, source: str = "artificial_analysis") -> Optional[Dict[str, Any]]:
+        with self._lock:
+            with self._get_connection() as conn:
+                row = conn.execute(
+                    """
+                    SELECT * FROM score_snapshots
+                    WHERE source = ?
+                    ORDER BY fetched_at DESC
+                    LIMIT 1
+                    """,
+                    (source,),
+                ).fetchone()
+                if not row:
+                    return None
+                d = dict(row)
+                d["payload"] = json.loads(d["payload_json"])
+                return d
+
+    def get_score_snapshot(self, snapshot_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            with self._get_connection() as conn:
+                row = conn.execute("SELECT * FROM score_snapshots WHERE id = ?", (snapshot_id,)).fetchone()
+                if not row:
+                    return None
+                d = dict(row)
+                d["payload"] = json.loads(d["payload_json"])
+                return d
+
+    def get_decision_cache(self, key: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            with self._get_connection() as conn:
+                row = conn.execute("SELECT * FROM decision_cache WHERE key = ?", (key,)).fetchone()
+                if not row:
+                    return None
+                d = dict(row)
+                d["answers"] = json.loads(d["answers_json"])
+                return d
+
+    def save_decision_cache(
+        self,
+        key: str,
+        decision_provider: str,
+        rubric_version: int,
+        state_hash: str,
+        answers: Dict[str, Any],
+        router_latency_ms: int = 0,
+    ) -> None:
+        now = time.time()
+        with self._lock:
+            with self._get_connection() as conn:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO decision_cache (
+                        key, decision_provider, rubric_version, state_hash,
+                        answers_json, router_latency_ms, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        key,
+                        decision_provider,
+                        rubric_version,
+                        state_hash,
+                        json.dumps(answers),
+                        router_latency_ms,
+                        now,
+                    ),
+                )
+                conn.commit()
+
     def get_usage_summary(self) -> Dict[str, Any]:
         """Aggregate usage metrics by model, provider/endpoint, and overall total."""
         with self._lock:
             with self._get_connection() as conn:
-                # Total summary
                 total_row = conn.execute(
                     """
                     SELECT COUNT(*) as total_requests,
@@ -391,7 +656,6 @@ class Storage:
                     """
                 ).fetchone()
 
-                # By model
                 by_model_rows = conn.execute(
                     """
                     SELECT chosen_model_id,
@@ -406,7 +670,6 @@ class Storage:
                     """
                 ).fetchall()
 
-                # By endpoint
                 by_endpoint_rows = conn.execute(
                     """
                     SELECT chosen_endpoint_id, provider_id,

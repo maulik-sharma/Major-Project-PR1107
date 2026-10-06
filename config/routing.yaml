@@ -1,0 +1,99 @@
+decision:
+  active: clef-flash
+  fallback: heuristic          # used whenever the active provider fails
+  send_prompt_text: true       # false = heuristic only; no prompt text leaves the machine
+  timeout_s: 1.5
+  max_state_tokens: 2000
+  providers:
+    - id: clef-flash
+      protocol: cloudflare_decision
+      auth_env: [CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_AUTH_TOKEN]
+      model: clef-flash        # "clef" (27B) is the precision variant
+    - id: heuristic
+      protocol: heuristic
+    - id: decision-mock
+      protocol: mock
+
+rubric:
+  version: 1
+  questions:
+    task:
+      type: choice
+      instructions: "Classify the primary task category of the user prompt."
+      options:
+        coding: "Writing, debugging, or analyzing source code or scripts."
+        math_reasoning: "Mathematical proofs, derivations, or multi-step logic puzzles."
+        writing_creative: "Creative writing, prose, essays, or brainstorming."
+        summarization_extraction: "Summarizing text or extracting structured data from passages."
+        translation_language: "Translating between human languages or linguistic queries."
+        analysis_research: "In-depth analytical synthesis, comparative reviews, or research queries."
+        agentic_tool_use: "Directives requiring tool calls, API interactions, or command executions."
+        chat_general: "General conversation, short greetings, or simple factual lookups."
+    difficulty:
+      type: score
+      instructions: "Rate the intellectual difficulty and complexity of the task."
+      levels:
+        - "0 trivial: Greeting, single-step lookup, minimal thinking required"
+        - "1 easy: Short explanation or direct text rewrite"
+        - "2 moderate: Standard multi-step reasoning, typical coding task"
+        - "3 hard: Complex reasoning, non-trivial debugging, multi-constraint design"
+        - "4 expert: Research-level proofs, deep architectural synthesis"
+    precision:
+      type: score
+      instructions: "Rate how critical exact factual and logical precision is for this task."
+      levels:
+        - "0 casual: Creative or conversational answers where multiple styles work"
+        - "1 loose: Informational text where minor inaccuracies have low impact"
+        - "2 accurate: Facts, runnable code, or specific instructions that should work"
+        - "3 exact: Math proofs, mission-critical systems, financial or legal exactness"
+    larger_model_benefit:
+      type: score
+      instructions: "Rate how much a larger, more capable model would benefit the response quality."
+      levels:
+        - "0 none: Any capable small model answers equally well"
+        - "1 slight: A larger model may provide better phrasing or formatting"
+        - "2 clear: A larger model produces noticeably better reasoning and depth"
+        - "3 large: A smaller model would very likely fail or hallucinate"
+    needs_reasoning:
+      type: noul
+      instructions: "Does the task require deliberate multi-step reasoning or internal chain of thought before providing an answer?"
+    task_changed:
+      type: noul
+      instructions: "Does the latest message represent a clear change of topic or task compared to previous conversation context?"
+
+need:
+  weights:
+    difficulty: 0.5
+    precision: 0.2
+    larger_model_benefit: 0.3
+  bias: 0.0
+  uncertainty_k: 0.15
+  slack: 0.10
+
+metric_by_task:
+  coding: coding
+  agentic_tool_use: agentic
+  default: intelligence
+
+pool:
+  include: ["*"]               # fnmatch patterns on model id; empty match is ignored with a warning
+  exclude: ["mock-*"]          # exclusions are never ignored
+
+unscored_policy: exclude       # or tier_default
+
+stickiness:
+  enabled: false
+  task_changed_threshold: 0.6
+  stay_unless_cost_ratio: 4.0
+
+profiles:
+  frugal:
+    bias: -0.15
+  balanced:
+    bias: 0.0
+  quality:
+    bias: 0.15
+
+scores:
+  source: artificial_analysis
+  refresh_min_interval_days: 7
