@@ -160,14 +160,16 @@ def test_fetch_url() -> None:
         return_value=httpx.Response(
             200,
             text="<html><head><title>Test</title></head><body><h1>Hello World</h1><script>evil()</script><p>This is content.</p></body></html>",
+            headers={"content-type": "text/html"},
         )
     )
 
     res = fetch_url("https://example.com/test")
-    assert res["status_code"] == 200
+    assert "content" in res
     assert "Hello World" in res["content"]
     assert "This is content." in res["content"]
     assert "evil()" not in res["content"]
+    assert res.get("fetch_method") == "httpx"
 
 
 def test_tool_registry_full_suite() -> None:
@@ -198,3 +200,109 @@ def test_tool_registry_full_suite() -> None:
     assert reg.is_tool_enabled("web_search") is False
     assert "web_search" not in [s.name for s in reg.get_tool_specs()]
     assert "web_search" in [s.name for s in reg.list_all_specs()]
+
+
+def test_bot_challenge_detection() -> None:
+    from modelmesh.core.tools.web import _is_bot_challenge
+
+    normal_html = "<html><body><h1>Welcome to our site</h1><p>Documentation and guides.</p></body></html>"
+    assert _is_bot_challenge(normal_html) is False
+
+    cloudflare_challenge = (
+        "<html><head><title>Just a moment...</title></head>"
+        "<body><div>Checking your browser before accessing site. Ray ID: 8934789234</div>"
+        "<div>cf-browser-verification please verify you are a human</div></body></html>"
+    )
+    assert _is_bot_challenge(cloudflare_challenge) is True
+
+
+@respx.mock
+def test_web_search_lite_backend() -> None:
+    # Fail HTML endpoint
+    respx.post("https://html.duckduckgo.com/html/").mock(return_value=httpx.Response(500))
+
+    mock_lite_html = """
+    <html>
+      <body>
+        <table>
+          <tr><td><a class="result-link" href="https://duckduckgo.com/l/?uddg=https%3A%2F%2Fpython.org%2F">Python Home</a></td></tr>
+          <tr><td class="result-snippet">The official home of Python.</td></tr>
+        </table>
+      </body>
+    </html>
+    """
+    respx.post("https://lite.duckduckgo.com/lite/").mock(
+        return_value=httpx.Response(200, text=mock_lite_html)
+    )
+
+    res = web_search("Python", max_results=3)
+    assert res["results_count"] == 1
+    assert res["results"][0]["title"] == "Python Home"
+    assert res["results"][0]["url"] == "https://python.org/"
+    assert "official home" in res["results"][0]["snippet"]
+
+
+def test_web_search_query_limits_and_empty() -> None:
+    empty_res = web_search("   ")
+    assert empty_res["results_count"] == 0
+    assert "Empty search query" in empty_res["error"]
+
+    long_query = "a" * 1000
+    # Should not crash, query should be capped at 400 chars
+    res = web_search(long_query)
+    assert len(res["query"]) <= 400
+
+
+@respx.mock
+def test_fetch_url_limits_and_options() -> None:
+    # Empty url
+    empty_res = fetch_url("")
+    assert "error" in empty_res
+
+    # Normal fetch with max_chars truncation
+    long_content = "<p>" + ("A" * 500) + "</p>"
+    respx.get("https://example.com/long").mock(
+        return_value=httpx.Response(200, text=long_content, headers={"content-type": "text/html"})
+    )
+    res = fetch_url("https://example.com/long", max_chars=150)
+    assert res["truncated"] is True
+    assert len(res["content"]) <= 150
+    assert res["total_chars"] >= 500
+
+
+def test_filesystem_limits_and_edge_cases(tmp_path: Path) -> None:
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+
+    # 1. Overwrite=False
+    f = ws / "existing.txt"
+    f.write_text("orig", encoding="utf-8")
+    write_res = write_text_file("existing.txt", "new", overwrite=False, workspace_folder=str(ws))
+    assert "File already exists" in write_res.get("error", "")
+
+    # 2. Max lines reading
+    f_many = ws / "many_lines.txt"
+    f_many.write_text("\n".join(f"line {i}" for i in range(50)), encoding="utf-8")
+    read_res = read_text_file("many_lines.txt", max_lines=10, workspace_folder=str(ws))
+    assert read_res["lines_shown"] == 10
+    assert read_res["truncated"] is True
+    assert read_res["line_count"] == 50
+
+    # 3. Content too large for write (MAX_WRITE_BYTES)
+    huge_content = "x" * 600_000
+    huge_res = write_text_file("huge.txt", huge_content, workspace_folder=str(ws))
+    assert "too large" in huge_res.get("error", "").lower()
+
+    # 4. Search in files case sensitivity and pattern filter
+    (ws / "doc.md").write_text("FIND_ME here\n", encoding="utf-8")
+    (ws / "doc.txt").write_text("find_me here\n", encoding="utf-8")
+
+    case_res = search_in_files("FIND_ME", case_sensitive=True, file_pattern="*.md", workspace_folder=str(ws))
+    assert case_res["matches_count"] == 1
+    assert "doc.md" in case_res["matches"][0]["file"]
+
+    # Search with empty query
+    empty_s = search_in_files("", workspace_folder=str(ws))
+    assert empty_s["matches_count"] == 0
+    assert "Empty search query" in empty_s.get("error", "")
+

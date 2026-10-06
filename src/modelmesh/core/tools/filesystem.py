@@ -3,14 +3,32 @@
 from __future__ import annotations
 
 import fnmatch
+import logging
 import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Limits
+# ---------------------------------------------------------------------------
+
+MAX_READ_LINES = 1000
+MAX_WRITE_BYTES = 500_000  # ~500 KB
+MAX_DIR_ITEMS = 500
+MAX_SEARCH_MATCHES = 100
+MAX_PATH_LENGTH = 4096
+
 
 def _resolve_workspace_path(path: str, workspace_folder: Optional[str]) -> Path:
     """Safely resolve path within workspace directory and check boundary."""
+    if not path or not path.strip():
+        raise ValueError("Path must not be empty.")
+    if len(path) > MAX_PATH_LENGTH:
+        raise ValueError(f"Path is too long ({len(path)} chars, max {MAX_PATH_LENGTH}).")
+
     root = Path(workspace_folder).resolve() if workspace_folder else Path.cwd().resolve()
     raw_p = Path(path)
     target = raw_p.resolve() if raw_p.is_absolute() else (root / raw_p).resolve()
@@ -30,16 +48,27 @@ def read_text_file(
     max_lines: int = 200,
     workspace_folder: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Read a local text file safely within a specified workspace folder."""
+    """Read a local text file safely within a specified workspace folder.
+
+    Args:
+        path: Relative or absolute file path within the workspace.
+        max_lines: Maximum number of lines to return (default: 200, max: 1000).
+        workspace_folder: Root workspace directory for boundary checks.
+
+    Returns:
+        Dict with path, content, line counts, and truncation info.
+    """
     try:
         target = _resolve_workspace_path(path, workspace_folder)
-    except PermissionError as exc:
+    except (PermissionError, ValueError) as exc:
         return {"error": str(exc)}
 
     if not target.exists():
         return {"error": f"File not found: '{path}'."}
     if not target.is_file():
         return {"error": f"Path is not a regular file: '{path}'."}
+
+    max_lines = max(1, min(MAX_READ_LINES, max_lines))
 
     try:
         content = target.read_text(encoding="utf-8", errors="replace")
@@ -65,11 +94,25 @@ def write_text_file(
     overwrite: bool = True,
     workspace_folder: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Write text content to a file safely within the workspace folder."""
+    """Write text content to a file safely within the workspace folder.
+
+    Args:
+        path: Relative or absolute file path within the workspace.
+        content: Text content to write (max ~500KB).
+        overwrite: Whether to overwrite existing files (default: true).
+        workspace_folder: Root workspace directory for boundary checks.
+
+    Returns:
+        Dict with path, bytes written, success status.
+    """
     try:
         target = _resolve_workspace_path(path, workspace_folder)
-    except PermissionError as exc:
+    except (PermissionError, ValueError) as exc:
         return {"error": str(exc)}
+
+    content_bytes = len(content.encode("utf-8"))
+    if content_bytes > MAX_WRITE_BYTES:
+        return {"error": f"Content too large ({content_bytes} bytes, max {MAX_WRITE_BYTES})."}
 
     if target.exists() and not overwrite:
         return {"error": f"File already exists and overwrite is set to False: '{path}'."}
@@ -81,7 +124,7 @@ def write_text_file(
         return {
             "path": path,
             "absolute_path": str(target),
-            "bytes_written": len(content.encode("utf-8")),
+            "bytes_written": content_bytes,
             "lines_written": len(lines),
             "success": True,
         }
@@ -95,10 +138,20 @@ def list_directory(
     max_items: int = 100,
     workspace_folder: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """List files and directories inside the workspace directory."""
+    """List files and directories inside the workspace directory.
+
+    Args:
+        path: Relative directory path within workspace (default: '.').
+        recursive: Whether to traverse subdirectories (default: false).
+        max_items: Maximum items to return (1-500, default: 100).
+        workspace_folder: Root workspace directory for boundary checks.
+
+    Returns:
+        Dict with directory listing, item count, and truncation info.
+    """
     try:
         target = _resolve_workspace_path(path, workspace_folder)
-    except PermissionError as exc:
+    except (PermissionError, ValueError) as exc:
         return {"error": str(exc)}
 
     if not target.exists():
@@ -106,6 +159,7 @@ def list_directory(
     if not target.is_dir():
         return {"error": f"Path is not a directory: '{path}'."}
 
+    max_items = max(1, min(MAX_DIR_ITEMS, max_items))
     items: List[Dict[str, Any]] = []
     root = Path(workspace_folder).resolve() if workspace_folder else Path.cwd().resolve()
 
@@ -172,11 +226,24 @@ def search_in_files(
     max_matches: int = 50,
     workspace_folder: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Search for string or regex query across files within the workspace directory."""
+    """Search for string or regex query across files within the workspace directory.
+
+    Args:
+        query: Text substring or regex pattern to search for (max 400 chars).
+        file_pattern: Glob pattern for filename filtering (default: '*').
+        case_sensitive: Case-sensitive search (default: false).
+        max_matches: Maximum matching lines to return (1-100, default: 50).
+        workspace_folder: Root workspace directory.
+
+    Returns:
+        Dict with query, match count, and list of matching lines.
+    """
     root = Path(workspace_folder).resolve() if workspace_folder else Path.cwd().resolve()
-    clean_query = query.strip()
+    clean_query = query.strip()[:400]
     if not clean_query:
         return {"query": query, "matches_count": 0, "matches": [], "error": "Empty search query."}
+
+    max_matches = max(1, min(MAX_SEARCH_MATCHES, max_matches))
 
     flags = 0 if case_sensitive else re.IGNORECASE
     try:

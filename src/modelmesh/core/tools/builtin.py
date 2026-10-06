@@ -51,6 +51,8 @@ SAFE_FUNCTIONS = {
     "e": math.e,
 }
 
+MAX_EXPRESSION_LENGTH = 500
+
 
 def _eval_ast_node(node: ast.AST) -> Any:
     if isinstance(node, ast.Constant):
@@ -83,8 +85,15 @@ def _eval_ast_node(node: ast.AST) -> Any:
 
 
 def calculator(expression: str) -> Dict[str, Any]:
-    """Safely parse and evaluate a mathematical expression using an AST parser."""
-    clean_expr = expression.strip()
+    """Safely parse and evaluate a mathematical expression using an AST parser.
+
+    Args:
+        expression: Math expression string (max 500 chars).
+
+    Returns:
+        Dict with expression, numeric result, and string representation.
+    """
+    clean_expr = expression.strip()[:MAX_EXPRESSION_LENGTH]
     if not clean_expr:
         return {"error": "Empty expression provided."}
 
@@ -124,17 +133,24 @@ def create_builtin_registry(workspace_folder: Optional[str] = None) -> ToolRegis
     # 1. Web Search Tool
     registry.register(
         name="web_search",
-        description="Search the web for up-to-date information, documentation, news, or answers.",
+        description=(
+            "Search the web for up-to-date information, documentation, news, or answers. "
+            "Returns titles, URLs, and snippets from DuckDuckGo."
+        ),
         parameters={
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "The search keywords or query.",
+                    "description": "The search keywords or query (max 400 characters).",
+                    "maxLength": 400,
                 },
                 "max_results": {
                     "type": "integer",
-                    "description": "Maximum number of search results to return (default: 5, max: 15).",
+                    "description": "Maximum number of search results to return (1-15, default: 5).",
+                    "minimum": 1,
+                    "maximum": 15,
+                    "default": 5,
                 },
             },
             "required": ["query"],
@@ -145,17 +161,23 @@ def create_builtin_registry(workspace_folder: Optional[str] = None) -> ToolRegis
     # 2. Fetch URL Tool
     registry.register(
         name="fetch_url",
-        description="Fetch a web page via HTTP GET and extract its readable textual content.",
+        description=(
+            "Fetch a web page and extract its readable text content. "
+            "Uses browser emulation and headless browser fallback for bot-protected sites."
+        ),
         parameters={
             "type": "object",
             "properties": {
                 "url": {
                     "type": "string",
-                    "description": "The web URL to fetch.",
+                    "description": "The web URL to fetch (http or https).",
                 },
                 "max_chars": {
                     "type": "integer",
-                    "description": "Maximum character length to return (default: 4000).",
+                    "description": "Maximum characters to return (100-50000, default: 8000).",
+                    "minimum": 100,
+                    "maximum": 50000,
+                    "default": 8000,
                 },
             },
             "required": ["url"],
@@ -179,7 +201,10 @@ def create_builtin_registry(workspace_folder: Optional[str] = None) -> ToolRegis
                 },
                 "max_lines": {
                     "type": "integer",
-                    "description": "Maximum number of lines to return (default: 200).",
+                    "description": "Maximum number of lines to return (1-1000, default: 200).",
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "default": 200,
                 },
             },
             "required": ["path"],
@@ -208,11 +233,12 @@ def create_builtin_registry(workspace_folder: Optional[str] = None) -> ToolRegis
                 },
                 "content": {
                     "type": "string",
-                    "description": "The text content to write into the file.",
+                    "description": "The text content to write into the file (max ~500KB).",
                 },
                 "overwrite": {
                     "type": "boolean",
                     "description": "Whether to overwrite if file already exists (default: true).",
+                    "default": True,
                 },
             },
             "required": ["path", "content"],
@@ -242,14 +268,19 @@ def create_builtin_registry(workspace_folder: Optional[str] = None) -> ToolRegis
                 "path": {
                     "type": "string",
                     "description": "Relative directory path within workspace (default: '.').",
+                    "default": ".",
                 },
                 "recursive": {
                     "type": "boolean",
                     "description": "Whether to traverse subdirectories recursively (default: false).",
+                    "default": False,
                 },
                 "max_items": {
                     "type": "integer",
-                    "description": "Maximum number of items to return (default: 100).",
+                    "description": "Maximum number of items to return (1-500, default: 100).",
+                    "minimum": 1,
+                    "maximum": 500,
+                    "default": 100,
                 },
             },
         },
@@ -279,19 +310,25 @@ def create_builtin_registry(workspace_folder: Optional[str] = None) -> ToolRegis
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Text substring or regex pattern to search for.",
+                    "description": "Text substring or regex pattern to search for (max 400 chars).",
+                    "maxLength": 400,
                 },
                 "file_pattern": {
                     "type": "string",
                     "description": "Glob pattern for filtering file names (e.g. '*.py', '*.md', default: '*').",
+                    "default": "*",
                 },
                 "case_sensitive": {
                     "type": "boolean",
                     "description": "Whether the search is case-sensitive (default: false).",
+                    "default": False,
                 },
                 "max_matches": {
                     "type": "integer",
-                    "description": "Maximum number of matching lines to return (default: 50).",
+                    "description": "Maximum number of matching lines to return (1-100, default: 50).",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 50,
                 },
             },
             "required": ["query"],
@@ -302,13 +339,18 @@ def create_builtin_registry(workspace_folder: Optional[str] = None) -> ToolRegis
     # 7. Calculator
     registry.register(
         name="calculator",
-        description="Safely evaluate a mathematical expression (e.g. '2 + 2', 'sqrt(144) * 3', 'log(100)').",
+        description=(
+            "Safely evaluate a mathematical expression "
+            "(e.g. '2 + 2', 'sqrt(144) * 3', 'log(100)'). "
+            "Supports +, -, *, /, //, %, **, sqrt, sin, cos, tan, log, log10, exp, abs, round, floor, ceil, min, max, pi, e."
+        ),
         parameters={
             "type": "object",
             "properties": {
                 "expression": {
                     "type": "string",
-                    "description": "The math expression to evaluate.",
+                    "description": "The math expression to evaluate (max 500 chars).",
+                    "maxLength": 500,
                 }
             },
             "required": ["expression"],
@@ -325,7 +367,7 @@ def create_builtin_registry(workspace_folder: Optional[str] = None) -> ToolRegis
             "properties": {
                 "timezone": {
                     "type": "string",
-                    "description": "Optional timezone name.",
+                    "description": "Optional timezone name (currently uses system timezone).",
                 }
             },
         },
