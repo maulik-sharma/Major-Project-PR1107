@@ -108,3 +108,22 @@ def test_roundtrip_save_and_reload(tmp_path: Path) -> None:
     assert len(reg2.models()) == len(reg1.models())
     assert len(reg2.providers()) == len(reg1.providers())
     assert len(reg2.candidates()) == len(reg1.candidates())
+
+
+def test_active_providers_config() -> None:
+    """Verify the active config/providers.yaml loads cleanly and has valid candidate endpoints."""
+    active_path = Path("config/providers.yaml")
+    if not active_path.exists():
+        return
+
+    reg = ModelRegistry()
+    reg.load_from_file(active_path)
+
+    cands = reg.candidates()
+    assert len(cands) > 0
+    for cand in cands:
+        assert cand.api_model, f"Candidate {cand.candidate_id} has empty api_model"
+        assert cand.provider_id in {p.id for p in reg.providers()}, f"Unknown provider {cand.provider_id}"
+        assert cand.price_in_per_mtok >= 0.0
+        assert cand.price_out_per_mtok >= 0.0
+
