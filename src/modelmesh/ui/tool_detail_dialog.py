@@ -35,6 +35,7 @@ class ToolDetailDialog(QDialog):
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("toolDetailDialog")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.tool_spec = tool_spec
         self.tool_registry = tool_registry

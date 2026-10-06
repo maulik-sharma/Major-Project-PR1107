@@ -589,11 +589,13 @@ function clear_chat() {
  * Theme switch
  */
 function set_theme(themeName) {
-  if (themeName === 'light') {
-    document.body.className = 'light-theme';
-  } else {
-    document.body.className = 'dark-theme';
-  }
+  const isLight = themeName === 'light';
+  const cls = isLight ? 'light-theme' : 'dark-theme';
+  document.documentElement.className = cls;
+  document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
+  document.body.className = cls;
+  document.documentElement.style.backgroundColor = isLight ? '#ffffff' : '#141417';
+  document.body.style.backgroundColor = isLight ? '#ffffff' : '#141417';
 }
 
 // Global window exposures

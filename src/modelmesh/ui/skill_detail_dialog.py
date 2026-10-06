@@ -38,6 +38,7 @@ class SkillDetailDialog(QDialog):
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("skillDetailDialog")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.skill = skill
         self.loader = loader

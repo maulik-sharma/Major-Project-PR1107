@@ -26,6 +26,7 @@ class ParametersDialog(QDialog):
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("parametersDialog")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWindowTitle("Generation Parameters")
         self.setFixedWidth(420)

@@ -26,6 +26,7 @@ class UsageDialog(QDialog):
 
     def __init__(self, storage: Storage, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
+        self.setObjectName("usageDialog")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWindowTitle("ModelMesh Usage & Analytics Dashboard")
         self.resize(780, 480)

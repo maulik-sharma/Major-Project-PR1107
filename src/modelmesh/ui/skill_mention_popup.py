@@ -29,14 +29,14 @@ class SkillMentionItemWidget(QWidget):
         layout.setSpacing(2)
 
         name_lbl = QLabel(name)
-        name_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #f4f4f6;")
+        name_lbl.setObjectName("skillMentionItemName")
         layout.addWidget(name_lbl)
 
         clean_desc = description.strip()
         if len(clean_desc) > 65:
             clean_desc = clean_desc[:62] + "..."
         desc_lbl = QLabel(clean_desc)
-        desc_lbl.setStyleSheet("font-size: 11.5px; color: #71717a;")
+        desc_lbl.setObjectName("skillMentionItemDesc")
         desc_lbl.setWordWrap(False)
         layout.addWidget(desc_lbl)
 
@@ -50,6 +50,7 @@ class SkillMentionPopup(QFrame):
         super().__init__(parent, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
         self.setObjectName("skillMentionPopup")
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.loader: Optional[SkillLoader] = None
@@ -59,14 +60,6 @@ class SkillMentionPopup(QFrame):
 
     def _init_ui(self) -> None:
         self.setFixedWidth(300)
-        self.setStyleSheet(
-            "#skillMentionPopup { background-color: #1a1a1e; border: 1px solid rgba(255, 255, 255, 0.12); "
-            "border-radius: 9px; } "
-            "QListWidget { background-color: transparent; border: none; outline: none; padding: 4px; } "
-            "QListWidget::item { border-radius: 6px; margin: 1px 0px; } "
-            "QListWidget::item:hover { background-color: rgba(255, 255, 255, 0.05); } "
-            "QListWidget::item:selected { background-color: rgba(255, 255, 255, 0.09); }"
-        )
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -81,26 +74,18 @@ class SkillMentionPopup(QFrame):
 
         # Bottom status bar
         footer = QWidget()
-        footer.setStyleSheet(
-            "background-color: rgba(255, 255, 255, 0.02); "
-            "border-top: 1px solid rgba(255, 255, 255, 0.06); "
-            "border-bottom-left-radius: 9px; border-bottom-right-radius: 9px; "
-            "padding: 6px 12px;"
-        )
+        footer.setObjectName("skillMentionFooter")
+        footer.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         footer_layout = QHBoxLayout(footer)
         footer_layout.setContentsMargins(10, 4, 10, 4)
 
         close_lbl = QLabel("Close menu")
-        close_lbl.setStyleSheet("font-size: 11px; color: #71717a;")
+        close_lbl.setObjectName("skillMentionCloseLbl")
         footer_layout.addWidget(close_lbl)
         footer_layout.addStretch()
 
         esc_badge = QLabel("ESC")
-        esc_badge.setStyleSheet(
-            "background-color: #27272a; color: #a1a1aa; "
-            "border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 3px; "
-            "padding: 1px 5px; font-size: 9.5px; font-weight: 600;"
-        )
+        esc_badge.setObjectName("skillMentionEscBadge")
         footer_layout.addWidget(esc_badge)
 
         layout.addWidget(footer)

@@ -34,6 +34,7 @@ class SettingsDialog(QDialog):
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("settingsDialog")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWindowTitle("ModelMesh Settings")
         self.resize(780, 530)

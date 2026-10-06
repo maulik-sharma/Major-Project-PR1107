@@ -13,6 +13,9 @@ from PyQt6.QtWebEngineCore import QWebEnginePage
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 
+from modelmesh.ui.settings.tools_tab import get_app_settings
+
+
 class CustomWebEnginePage(QWebEnginePage):
     """Custom WebEnginePage that intercepts navigation to external URLs."""
 
@@ -64,13 +67,14 @@ class ChatView(QWebEngineView):
     def __init__(self, parent: Optional[Any] = None) -> None:
         super().__init__(parent)
 
-        self._theme_name = "dark"
+        saved_theme = str(get_app_settings().value("appearance/theme", "dark"))
+        self._theme_name = saved_theme
         self._is_page_loaded = False
         self._queued_js: List[str] = []
 
         self._page = CustomWebEnginePage(self)
         self.setPage(self._page)
-        self.set_theme("dark")
+        self.set_theme(saved_theme)
 
         self.bridge = ChatBridge()
         self.bridge.regenerate_requested.connect(self.regenerate_requested)

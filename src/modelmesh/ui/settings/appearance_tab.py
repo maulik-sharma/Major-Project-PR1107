@@ -49,6 +49,14 @@ class AppearanceTab(QWidget):
         layout.addLayout(form)
         layout.addStretch()
 
+    def set_theme_choice(self, theme: str) -> None:
+        """Set the theme choice programmatically and trigger updates."""
+        target_text = "Light" if theme == "light" else "Dark (Default)"
+        if self.theme_combo.currentText() == target_text:
+            self._on_theme_changed(target_text)
+        else:
+            self.theme_combo.setCurrentText(target_text)
+
     def _on_theme_changed(self, text: str) -> None:
         theme = "light" if "Light" in text else "dark"
         get_app_settings().setValue("appearance/theme", theme)

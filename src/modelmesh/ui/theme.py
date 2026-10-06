@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
+from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import QApplication
 
 DARK_THEME_QSS = """
-QMainWindow, QDialog {
+QMainWindow, QDialog, QWidget#settingsDialog, QWidget#usageDialog, QWidget#parametersDialog, QWidget#skillDetailDialog, QWidget#toolDetailDialog, QWidget#createSkillDialog, QWidget#addProviderDialog, QWidget#addEndpointDialog {
     background-color: #141417;
     color: #f4f4f6;
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -466,6 +467,10 @@ QComboBox:hover {
     background-color: #222226;
 }
 
+QComboBox:focus {
+    border-color: #3b82f6;
+}
+
 QComboBox:disabled {
     color: #52525b;
     background-color: rgba(255, 255, 255, 0.02);
@@ -473,18 +478,45 @@ QComboBox:disabled {
 }
 
 QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 20px;
     border: none;
-    padding-right: 6px;
+    background: transparent;
 }
 
 QComboBox QAbstractItemView {
     background-color: #18181b;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #f4f4f6;
     selection-background-color: #27272a;
     selection-color: #ffffff;
     padding: 4px;
-    outline: none;
+    outline: 0px;
+}
+
+QComboBox QAbstractItemView::item {
+    min-height: 26px;
+    padding: 4px 8px;
+    border: none;
+    border-radius: 4px;
+    color: #f4f4f6;
+    background-color: transparent;
+    outline: 0px;
+}
+
+QComboBox QAbstractItemView::item:hover {
+    background-color: #222226;
+    color: #ffffff;
+    border: none;
+    outline: 0px;
+}
+
+QComboBox QAbstractItemView::item:selected {
+    background-color: #27272a;
+    color: #ffffff;
+    border: none;
+    outline: 0px;
 }
 
 /* Buttons and Inputs in Dialogs */
@@ -569,17 +601,27 @@ QMenu::item:selected {
 }
 
 /* Tab Widget */
+QTabWidget {
+    background-color: transparent;
+}
+
 QTabWidget::pane {
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     background-color: #141417;
     border-radius: 8px;
+    top: -1px;
+}
+
+QTabBar {
+    background-color: transparent;
+    qproperty-drawBase: 0;
 }
 
 QTabBar::tab {
-    background-color: #18181b;
+    background-color: #1b1b1f;
     color: #71717a;
-    padding: 8px 16px;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 8px 18px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-bottom: none;
     border-top-left-radius: 7px;
     border-top-right-radius: 7px;
@@ -587,10 +629,21 @@ QTabBar::tab {
     font-weight: 500;
 }
 
+QTabBar::tab:hover {
+    background-color: #222226;
+    color: #f4f4f6;
+}
+
 QTabBar::tab:selected {
     background-color: #141417;
     color: #f4f4f6;
+    font-weight: 600;
     border-color: rgba(255, 255, 255, 0.12);
+    border-bottom: 2px solid #3b82f6;
+}
+
+QDialogButtonBox {
+    background-color: transparent;
 }
 
 /* Tables and Trees */
@@ -722,10 +775,72 @@ QScrollBar::handle:vertical:hover {
     padding: 30px;
     text-align: center;
 }
+
+#skillMentionPopup {
+    background-color: #1a1a1e;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 9px;
+}
+
+#skillMentionPopup QListWidget {
+    background-color: transparent;
+    border: none;
+    outline: 0px;
+    padding: 4px;
+}
+
+#skillMentionPopup QListWidget::item {
+    border-radius: 6px;
+    margin: 1px 0px;
+    border: none;
+    outline: 0px;
+}
+
+#skillMentionPopup QListWidget::item:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+#skillMentionPopup QListWidget::item:selected {
+    background-color: rgba(255, 255, 255, 0.09);
+}
+
+#skillMentionItemName {
+    font-size: 13px;
+    font-weight: 600;
+    color: #f4f4f6;
+}
+
+#skillMentionItemDesc {
+    font-size: 11.5px;
+    color: #71717a;
+}
+
+#skillMentionFooter {
+    background-color: rgba(255, 255, 255, 0.02);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom-left-radius: 9px;
+    border-bottom-right-radius: 9px;
+    padding: 6px 12px;
+}
+
+#skillMentionCloseLbl {
+    font-size: 11px;
+    color: #71717a;
+}
+
+#skillMentionEscBadge {
+    background-color: #27272a;
+    color: #a1a1aa;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 9.5px;
+    font-weight: 600;
+}
 """
 
 LIGHT_THEME_QSS = """
-QMainWindow, QDialog {
+QMainWindow, QDialog, QWidget#settingsDialog, QWidget#usageDialog, QWidget#parametersDialog, QWidget#skillDetailDialog, QWidget#toolDetailDialog, QWidget#createSkillDialog, QWidget#addProviderDialog, QWidget#addEndpointDialog {
     background-color: #f8fafc;
     color: #0f172a;
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -1180,6 +1295,10 @@ QComboBox:hover {
     background-color: #f8fafc;
 }
 
+QComboBox:focus {
+    border-color: #2563eb;
+}
+
 QComboBox:disabled {
     color: #94a3b8;
     background-color: #f1f5f9;
@@ -1187,19 +1306,45 @@ QComboBox:disabled {
 }
 
 QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 20px;
     border: none;
-    padding-right: 6px;
+    background: transparent;
 }
 
 QComboBox QAbstractItemView {
     background-color: #ffffff;
     border: 1px solid #cbd5e1;
-    border-radius: 8px;
+    color: #0f172a;
     selection-background-color: #eff6ff;
     selection-color: #1e40af;
-    color: #0f172a;
     padding: 4px;
-    outline: none;
+    outline: 0px;
+}
+
+QComboBox QAbstractItemView::item {
+    min-height: 26px;
+    padding: 4px 8px;
+    border: none;
+    border-radius: 4px;
+    color: #0f172a;
+    background-color: transparent;
+    outline: 0px;
+}
+
+QComboBox QAbstractItemView::item:hover {
+    background-color: #f1f5f9;
+    color: #0f172a;
+    border: none;
+    outline: 0px;
+}
+
+QComboBox QAbstractItemView::item:selected {
+    background-color: #eff6ff;
+    color: #1e40af;
+    border: none;
+    outline: 0px;
 }
 
 /* Buttons and Inputs in Dialogs */
@@ -1266,7 +1411,7 @@ QCheckBox::indicator:checked {
 QMenu {
     background-color: #ffffff;
     border: 1px solid #cbd5e1;
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 4px;
 }
 
@@ -1274,7 +1419,7 @@ QMenu::item {
     background-color: transparent;
     color: #0f172a;
     padding: 6px 14px;
-    border-radius: 5px;
+    border-radius: 4px;
     font-size: 12.5px;
 }
 
@@ -1284,16 +1429,26 @@ QMenu::item:selected {
 }
 
 /* Tab Widget */
+QTabWidget {
+    background-color: transparent;
+}
+
 QTabWidget::pane {
     border: 1px solid #e2e8f0;
     background-color: #ffffff;
     border-radius: 8px;
+    top: -1px;
+}
+
+QTabBar {
+    background-color: transparent;
+    qproperty-drawBase: 0;
 }
 
 QTabBar::tab {
     background-color: #f1f5f9;
     color: #64748b;
-    padding: 8px 16px;
+    padding: 8px 18px;
     border: 1px solid #e2e8f0;
     border-bottom: none;
     border-top-left-radius: 7px;
@@ -1302,11 +1457,21 @@ QTabBar::tab {
     font-weight: 500;
 }
 
+QTabBar::tab:hover {
+    background-color: #e2e8f0;
+    color: #0f172a;
+}
+
 QTabBar::tab:selected {
     background-color: #ffffff;
     color: #0f172a;
     font-weight: 600;
+    border-color: #e2e8f0;
     border-bottom: 2px solid #2563eb;
+}
+
+QDialogButtonBox {
+    background-color: transparent;
 }
 
 /* Tables and Trees */
@@ -1438,23 +1603,122 @@ QScrollBar::handle:vertical:hover {
     padding: 30px;
     text-align: center;
 }
+
+#skillMentionPopup {
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 9px;
+}
+
+#skillMentionPopup QListWidget {
+    background-color: transparent;
+    border: none;
+    outline: 0px;
+    padding: 4px;
+}
+
+#skillMentionPopup QListWidget::item {
+    border-radius: 6px;
+    margin: 1px 0px;
+    border: none;
+    outline: 0px;
+}
+
+#skillMentionPopup QListWidget::item:hover {
+    background-color: #f1f5f9;
+}
+
+#skillMentionPopup QListWidget::item:selected {
+    background-color: #eff6ff;
+}
+
+#skillMentionItemName {
+    font-size: 13px;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+#skillMentionItemDesc {
+    font-size: 11.5px;
+    color: #64748b;
+}
+
+#skillMentionFooter {
+    background-color: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    border-bottom-left-radius: 9px;
+    border-bottom-right-radius: 9px;
+    padding: 6px 12px;
+}
+
+#skillMentionCloseLbl {
+    font-size: 11px;
+    color: #64748b;
+}
+
+#skillMentionEscBadge {
+    background-color: #f1f5f9;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 9.5px;
+    font-weight: 600;
+}
 """
 
 
-def apply_theme(target: Any, theme: str = "dark") -> None:
-    """Apply application theme stylesheet to a QWidget or QApplication."""
+def _get_light_palette() -> QPalette:
+    palette = QPalette()
+    palette.setColor(QPalette.ColorRole.Window, QColor("#f8fafc"))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor("#0f172a"))
+    palette.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#f1f5f9"))
+    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.ToolTipText, QColor("#0f172a"))
+    palette.setColor(QPalette.ColorRole.Text, QColor("#0f172a"))
+    palette.setColor(QPalette.ColorRole.Button, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor("#0f172a"))
+    palette.setColor(QPalette.ColorRole.BrightText, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor("#2563eb"))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.PlaceholderText, QColor("#94a3b8"))
+    return palette
+
+
+def _get_dark_palette() -> QPalette:
+    palette = QPalette()
+    palette.setColor(QPalette.ColorRole.Window, QColor("#141417"))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor("#f4f4f6"))
+    palette.setColor(QPalette.ColorRole.Base, QColor("#1b1b1f"))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#222226"))
+    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor("#1b1b1f"))
+    palette.setColor(QPalette.ColorRole.ToolTipText, QColor("#f4f4f6"))
+    palette.setColor(QPalette.ColorRole.Text, QColor("#f4f4f6"))
+    palette.setColor(QPalette.ColorRole.Button, QColor("#1b1b1f"))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor("#f4f4f6"))
+    palette.setColor(QPalette.ColorRole.BrightText, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor("#3b82f6"))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.PlaceholderText, QColor("#71717a"))
+    return palette
+
+
+def apply_theme(target: Optional[Any] = None, theme: str = "dark") -> None:
+    """Apply application theme stylesheet globally and to specific targets."""
     qss = LIGHT_THEME_QSS if theme == "light" else DARK_THEME_QSS
-    if hasattr(target, "setStyleSheet"):
-        target.setStyleSheet(qss)
+    palette = _get_light_palette() if theme == "light" else _get_dark_palette()
 
     app = QApplication.instance()
     if app:
-        if isinstance(target, QApplication) or target == app:
-            app.setStyleSheet(qss)
+        app.setPalette(palette)
+        app.setStyleSheet(qss)
         for top in app.topLevelWidgets():
-            if hasattr(top, "setStyleSheet"):
+            if hasattr(top, "setStyleSheet") and top != app:
                 top.setStyleSheet(qss)
             if hasattr(top, "style") and top.style():
                 top.style().unpolish(top)
                 top.style().polish(top)
             top.update()
+    elif target is not None and hasattr(target, "setStyleSheet"):
+        target.setStyleSheet(qss)

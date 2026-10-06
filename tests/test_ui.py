@@ -157,9 +157,9 @@ def test_settings_dialog(qapp) -> None:
     # Test appearance theme change
     theme_events = []
     dlg.theme_changed.connect(theme_events.append)
-    dlg.appearance_tab.theme_combo.setCurrentText("Light")
+    dlg.appearance_tab.set_theme_choice("light")
     assert "light" in theme_events
-    dlg.appearance_tab.theme_combo.setCurrentText("Dark (Default)")
+    dlg.appearance_tab.set_theme_choice("dark")
     assert "dark" in theme_events
 
     # Test flat endpoints table content
@@ -757,7 +757,7 @@ def test_appearance_theme_switching_deep(qapp, tmp_path: Path) -> None:
     dlg = SettingsDialog(registry=reg, parent=win)
     theme_emitted = []
     dlg.theme_changed.connect(theme_emitted.append)
-    dlg.appearance_tab.theme_combo.setCurrentText("Light")
+    dlg.appearance_tab.set_theme_choice("light")
     assert "light" in theme_emitted
 
     # 3. Apply Dark Theme
