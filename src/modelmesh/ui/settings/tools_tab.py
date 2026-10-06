@@ -296,20 +296,13 @@ class ToolsTab(QWidget):
             self.skills_table.setCellWidget(row, 2, actions_widget)
 
     def _view_skill(self, skill: Any) -> None:
-        dlg = QDialog(self)
-        dlg.setWindowTitle(f"Skill: {skill.name}")
-        dlg.resize(520, 380)
-        vlayout = QVBoxLayout(dlg)
-        vlayout.addWidget(QLabel(f"<strong>Description:</strong> {skill.description}"))
-        vlayout.addWidget(QLabel("<strong>Instructions:</strong>"))
-        text_view = QTextEdit()
-        text_view.setReadOnly(True)
-        text_view.setPlainText(skill.body)
-        vlayout.addWidget(text_view)
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(dlg.accept)
-        vlayout.addWidget(close_btn)
-        dlg.exec()
+        from modelmesh.ui.skill_detail_dialog import SkillDetailDialog
+
+        if self.skill_loader:
+            dlg = SkillDetailDialog(skill=skill, loader=self.skill_loader, parent=self)
+            dlg.exec()
+            self.refresh_skills()
+            self.config_changed.emit()
 
     def _delete_skill(self, skill: Any) -> None:
         reply = QMessageBox.question(
@@ -319,14 +312,10 @@ class ToolsTab(QWidget):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
-            try:
-                import shutil
-                if skill.path.parent.exists():
-                    shutil.rmtree(skill.path.parent)
-                self.refresh_skills()
-                self.config_changed.emit()
-            except Exception as exc:
-                QMessageBox.warning(self, "Error", f"Failed to delete skill: {exc}")
+            if self.skill_loader:
+                self.skill_loader.delete_skill(skill.name)
+            self.refresh_skills()
+            self.config_changed.emit()
 
     def _on_new_skill(self) -> None:
         skills_dir = self.skill_loader.skills_dir if self.skill_loader else Path.cwd() / "skills"

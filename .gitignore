@@ -14,6 +14,8 @@ config/providers.yaml
 *.db
 *.sqlite
 *.sqlite3
+*.skills_state.json
+.skills_state.json
 data/
 
 # Python cache & build

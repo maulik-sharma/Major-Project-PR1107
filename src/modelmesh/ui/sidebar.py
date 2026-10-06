@@ -1,4 +1,4 @@
-"""Sidebar widget managing conversation list, search, and navigation actions."""
+"""Sidebar widget managing conversation list, skills navigation, search, and actions."""
 
 from __future__ import annotations
 
@@ -22,10 +22,11 @@ from PyQt6.QtWidgets import (
 
 
 class SidebarWidget(QWidget):
-    """Left sidebar with conversation history list and tool navigation."""
+    """Left sidebar with conversation history list, skills view navigation, and settings."""
 
     conversation_selected = pyqtSignal(str)
     new_chat_requested = pyqtSignal()
+    skills_requested = pyqtSignal()
     delete_conversation_requested = pyqtSignal(str)
     rename_conversation_requested = pyqtSignal(str, str)
     settings_requested = pyqtSignal()
@@ -38,17 +39,18 @@ class SidebarWidget(QWidget):
         self.setFixedWidth(260)
 
         self._all_conversations: List[Dict[str, Any]] = []
+        self._active_view: str = "chat"
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # 1. Header (Brand + New Chat)
+        # 1. Header (Brand + New Chat + Skills Nav)
         header_widget = QWidget()
         header_widget.setObjectName("sidebarHeader")
         header_layout = QVBoxLayout(header_widget)
         header_layout.setContentsMargins(14, 14, 14, 8)
-        header_layout.setSpacing(10)
+        header_layout.setSpacing(8)
 
         brand_layout = QHBoxLayout()
         brand_title = QLabel("ModelMesh")
@@ -60,12 +62,19 @@ class SidebarWidget(QWidget):
         new_chat_btn = QPushButton("+ New chat")
         new_chat_btn.setObjectName("newChatBtn")
         new_chat_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        new_chat_btn.clicked.connect(self.new_chat_requested)
+        new_chat_btn.clicked.connect(self._on_new_chat_clicked)
         header_layout.addWidget(new_chat_btn)
 
         # Shortcut Ctrl+N
         shortcut_new = QShortcut(QKeySequence("Ctrl+N"), self)
-        shortcut_new.activated.connect(self.new_chat_requested)
+        shortcut_new.activated.connect(self._on_new_chat_clicked)
+
+        # Skills Navigation Button
+        self.skills_nav_btn = QPushButton("Skills")
+        self.skills_nav_btn.setObjectName("sidebarSkillsBtn")
+        self.skills_nav_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.skills_nav_btn.clicked.connect(self._on_skills_clicked)
+        header_layout.addWidget(self.skills_nav_btn)
 
         # Search box
         self.search_box = QLineEdit()
@@ -119,6 +128,25 @@ class SidebarWidget(QWidget):
 
         layout.addWidget(footer_widget)
 
+    def set_active_view(self, view_name: str) -> None:
+        """Update active navigation highlight between 'chat' and 'skills'."""
+        self._active_view = view_name
+        if view_name == "skills":
+            self.skills_nav_btn.setProperty("active", "true")
+            self.conv_list.clearSelection()
+        else:
+            self.skills_nav_btn.setProperty("active", "false")
+        self.skills_nav_btn.style().unpolish(self.skills_nav_btn)
+        self.skills_nav_btn.style().polish(self.skills_nav_btn)
+
+    def _on_skills_clicked(self) -> None:
+        self.set_active_view("skills")
+        self.skills_requested.emit()
+
+    def _on_new_chat_clicked(self) -> None:
+        self.set_active_view("chat")
+        self.new_chat_requested.emit()
+
     def set_conversations(
         self,
         conversations: List[Dict[str, Any]],
@@ -138,27 +166,21 @@ class SidebarWidget(QWidget):
         query_lower = query.strip().lower()
 
         for conv in self._all_conversations:
-            title = conv.get("title") or "New Chat"
+            title = conv.get("title") or "New Conversation"
             if query_lower and query_lower not in title.lower():
                 continue
 
             item = QListWidgetItem(title)
             item.setData(Qt.ItemDataRole.UserRole, conv.get("id"))
-            item.setToolTip(f"Created: {conv.get('created', '')}\nID: {conv.get('id', '')}")
+            item.setToolTip(f"{title}\nCreated: {conv.get('created_at', '')}")
             self.conv_list.addItem(item)
 
             if selected_id and conv.get("id") == selected_id:
+                item.setSelected(True)
                 self.conv_list.setCurrentItem(item)
-
-    def select_conversation(self, conversation_id: str) -> None:
-        """Programmatically select a conversation in the list."""
-        for i in range(self.conv_list.count()):
-            item = self.conv_list.item(i)
-            if item and item.data(Qt.ItemDataRole.UserRole) == conversation_id:
-                self.conv_list.setCurrentItem(item)
-                break
 
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
+        self.set_active_view("chat")
         conv_id = item.data(Qt.ItemDataRole.UserRole)
         if conv_id:
             self.conversation_selected.emit(conv_id)
@@ -169,25 +191,26 @@ class SidebarWidget(QWidget):
             return
 
         conv_id = item.data(Qt.ItemDataRole.UserRole)
-        current_title = item.text()
+        if not conv_id:
+            return
 
         menu = QMenu(self)
-        rename_action = QAction("Rename", self)
-        delete_action = QAction("Delete", self)
+        rename_act = QAction("Rename", self)
+        rename_act.triggered.connect(lambda: self._prompt_rename(conv_id, item.text()))
+        menu.addAction(rename_act)
 
-        rename_action.triggered.connect(lambda: self._prompt_rename(conv_id, current_title))
-        delete_action.triggered.connect(lambda: self._prompt_delete(conv_id))
+        delete_act = QAction("Delete", self)
+        delete_act.triggered.connect(lambda: self._prompt_delete(conv_id))
+        menu.addAction(delete_act)
 
-        menu.addAction(rename_action)
-        menu.addAction(delete_action)
         menu.exec(self.conv_list.mapToGlobal(pos))
 
-    def _prompt_rename(self, conv_id: str, old_title: str) -> None:
+    def _prompt_rename(self, conv_id: str, current_title: str) -> None:
         new_title, ok = QInputDialog.getText(
             self,
             "Rename Conversation",
-            "Enter new conversation title:",
-            text=old_title,
+            "Enter new title:",
+            text=current_title,
         )
         if ok and new_title.strip():
             self.rename_conversation_requested.emit(conv_id, new_title.strip())

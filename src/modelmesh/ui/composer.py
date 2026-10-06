@@ -1,13 +1,23 @@
-"""Composer widget providing multiline input, attachments, drag-drop, and Send/Stop controls."""
+"""Composer widget providing multiline input, attachments, drag-drop, @ mention popup, atomic skill tokens, and Send/Stop controls."""
 
 from __future__ import annotations
 
 import base64
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from PyQt6.QtCore import QBuffer, QByteArray, QIODevice, QMimeData, Qt, pyqtSignal
-from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QImage, QKeyEvent
+from PyQt6.QtGui import (
+    QColor,
+    QDragEnterEvent,
+    QDropEvent,
+    QFont,
+    QImage,
+    QKeyEvent,
+    QTextCharFormat,
+    QTextCursor,
+    QTextFormat,
+)
 from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -19,11 +29,15 @@ from PyQt6.QtWidgets import (
 )
 
 from modelmesh.core.attachments import process_attachment
+from modelmesh.core.skills import SkillLoader
 from modelmesh.core.types import ImagePart, TextPart
+from modelmesh.ui.skill_mention_popup import SkillMentionPopup
+
+SKILL_TOKEN_PROP = 1001
 
 
 class AutoExpandingTextEdit(QTextEdit):
-    """TextEdit that emits send signal on Enter, expands height, and handles clipboard image pastes."""
+    """TextEdit with @ mention popup, atomic highlighted skill tokens, auto-expansion, and clipboard pasting."""
 
     send_pressed = pyqtSignal()
     attachment_pasted = pyqtSignal(dict)
@@ -32,14 +46,144 @@ class AutoExpandingTextEdit(QTextEdit):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.setObjectName("messageInput")
-        self.setPlaceholderText("Message ModelMesh... (Enter to send, Shift+Enter for newline)")
+        self.setPlaceholderText("Message ModelMesh... Type '@' to use a skill (Enter to send, Shift+Enter for newline)")
         self.setAcceptRichText(False)
         self.setAcceptDrops(True)
-        self.textChanged.connect(self._adjust_height)
+
+        self.mention_popup = SkillMentionPopup(self)
+        self.mention_popup.skill_selected.connect(self._on_skill_selected)
+
+        self.textChanged.connect(self._on_text_changed)
         self.setFixedHeight(42)
+
+    def _get_skill_token_range_at(self, pos: int) -> Optional[Tuple[int, int]]:
+        """If character at pos belongs to a skill token, return (start, end) range including trailing space."""
+        doc = self.document()
+        total_len = doc.characterCount()
+        if pos < 0 or pos >= total_len:
+            return None
+
+        c = QTextCursor(doc)
+        c.setPosition(pos)
+        c.movePosition(QTextCursor.MoveOperation.NextCharacter, QTextCursor.MoveMode.KeepAnchor)
+        fmt = c.charFormat()
+        skill_name = fmt.property(SKILL_TOKEN_PROP)
+        if not skill_name:
+            return None
+
+        # Trace start of token
+        start = pos
+        while start > 0:
+            check = QTextCursor(doc)
+            check.setPosition(start - 1)
+            check.movePosition(QTextCursor.MoveOperation.NextCharacter, QTextCursor.MoveMode.KeepAnchor)
+            if check.charFormat().property(SKILL_TOKEN_PROP) == skill_name:
+                start -= 1
+            else:
+                break
+
+        # Trace end of token
+        end = pos + 1
+        while end < total_len:
+            check = QTextCursor(doc)
+            check.setPosition(end)
+            check.movePosition(QTextCursor.MoveOperation.NextCharacter, QTextCursor.MoveMode.KeepAnchor)
+            if check.charFormat().property(SKILL_TOKEN_PROP) == skill_name:
+                end += 1
+            else:
+                break
+
+        # If followed by space, include trailing space in token range
+        if end < total_len:
+            check = QTextCursor(doc)
+            check.setPosition(end)
+            check.movePosition(QTextCursor.MoveOperation.NextCharacter, QTextCursor.MoveMode.KeepAnchor)
+            if check.selectedText() == " ":
+                end += 1
+
+        return (start, end)
 
     def keyPressEvent(self, e: Optional[QKeyEvent]) -> None:
         if e is not None:
+            # 1. Mention popup navigation
+            if self.mention_popup.isVisible():
+                if e.key() == Qt.Key.Key_Down:
+                    self.mention_popup.select_next()
+                    e.accept()
+                    return
+                elif e.key() == Qt.Key.Key_Up:
+                    self.mention_popup.select_prev()
+                    e.accept()
+                    return
+                elif e.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Tab):
+                    if not (e.modifiers() & Qt.KeyboardModifier.ShiftModifier):
+                        selected = self.mention_popup.confirm_selection()
+                        if selected:
+                            e.accept()
+                            return
+                elif e.key() == Qt.Key.Key_Escape:
+                    self.mention_popup.hide()
+                    e.accept()
+                    return
+
+            # 2. Atomic deletion on Backspace
+            if e.key() == Qt.Key.Key_Backspace:
+                cursor = self.textCursor()
+                if not cursor.hasSelection():
+                    pos = cursor.position()
+                    if pos > 0:
+                        token_range = self._get_skill_token_range_at(pos - 1)
+                        if not token_range and pos > 1:
+                            # Cursor right after trailing space of token
+                            c = QTextCursor(self.document())
+                            c.setPosition(pos - 1)
+                            c.movePosition(QTextCursor.MoveOperation.NextCharacter, QTextCursor.MoveMode.KeepAnchor)
+                            if c.selectedText() == " ":
+                                token_range = self._get_skill_token_range_at(pos - 2)
+
+                        if token_range:
+                            start, end = token_range
+                            del_cursor = QTextCursor(self.document())
+                            del_cursor.setPosition(start)
+                            del_cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+                            del_cursor.removeSelectedText()
+                            self.setTextCursor(del_cursor)
+                            self._check_mention_trigger()
+                            e.accept()
+                            return
+
+            # 3. Atomic deletion on Delete key
+            elif e.key() == Qt.Key.Key_Delete:
+                cursor = self.textCursor()
+                if not cursor.hasSelection():
+                    pos = cursor.position()
+                    token_range = self._get_skill_token_range_at(pos)
+                    if token_range:
+                        start, end = token_range
+                        del_cursor = QTextCursor(self.document())
+                        del_cursor.setPosition(start)
+                        del_cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+                        del_cursor.removeSelectedText()
+                        self.setTextCursor(del_cursor)
+                        self._check_mention_trigger()
+                        e.accept()
+                        return
+
+            # 4. If typing inside an atomic token, erase whole token first
+            elif e.text() and not (e.modifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier)):
+                cursor = self.textCursor()
+                if not cursor.hasSelection():
+                    pos = cursor.position()
+                    token_range = self._get_skill_token_range_at(pos)
+                    if token_range:
+                        start, end = token_range
+                        del_cursor = QTextCursor(self.document())
+                        del_cursor.setPosition(start)
+                        del_cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+                        del_cursor.removeSelectedText()
+                        self.setTextCursor(del_cursor)
+
+            # 5. Send message on Enter
             if e.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                 if e.modifiers() & Qt.KeyboardModifier.ShiftModifier:
                     super().keyPressEvent(e)
@@ -48,7 +192,74 @@ class AutoExpandingTextEdit(QTextEdit):
                     self.send_pressed.emit()
                     e.accept()
                     return
+
         super().keyPressEvent(e)
+
+    def _on_text_changed(self) -> None:
+        self._adjust_height()
+        self._check_mention_trigger()
+
+    def _check_mention_trigger(self) -> None:
+        cursor = self.textCursor()
+        pos_in_block = cursor.positionInBlock()
+        full_block = cursor.block().text()
+
+        if pos_in_block == 0 and full_block.startswith("@"):
+            block_text = full_block
+        else:
+            block_text = full_block[:pos_in_block]
+
+        at_idx = block_text.rfind("@")
+        if at_idx != -1:
+            if at_idx == 0 or block_text[at_idx - 1].isspace():
+                query = block_text[at_idx + 1:]
+                if not any(c.isspace() for c in query):
+                    if self.mention_popup.filter(query):
+                        self.mention_popup.show_above(self)
+                        return
+        self.mention_popup.hide()
+
+    def _on_skill_selected(self, skill_name: str) -> None:
+        cursor = self.textCursor()
+        pos_in_block = cursor.positionInBlock()
+        full_block = cursor.block().text()
+
+        if pos_in_block == 0 and full_block.startswith("@"):
+            block_text = full_block
+            pos_in_block = len(full_block)
+            cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock)
+        else:
+            block_text = full_block[:pos_in_block]
+
+        at_idx = block_text.rfind("@")
+        if at_idx != -1:
+            chars_to_replace = pos_in_block - at_idx
+            cursor.movePosition(
+                QTextCursor.MoveOperation.Left,
+                QTextCursor.MoveMode.KeepAnchor,
+                chars_to_replace,
+            )
+
+            # Highlighted skill pill format
+            token_format = QTextCharFormat()
+            token_format.setBackground(QColor("rgba(59, 130, 246, 0.22)"))
+            token_format.setForeground(QColor("#93c5fd"))
+            token_format.setFontWeight(QFont.Weight.DemiBold)
+            token_format.setProperty(SKILL_TOKEN_PROP, skill_name)
+
+            cursor.insertText(f"@{skill_name}", token_format)
+
+            # Normal trailing space and format reset
+            normal_format = QTextCharFormat()
+            normal_format.setBackground(Qt.GlobalColor.transparent)
+            normal_format.setForeground(QColor("#f4f4f6"))
+            normal_format.setFontWeight(QFont.Weight.Normal)
+
+            cursor.insertText(" ", normal_format)
+            self.setCurrentCharFormat(normal_format)
+            self.setTextCursor(cursor)
+
+        self.mention_popup.hide()
 
     def insertFromMimeData(self, source: QMimeData | None) -> None:
         """Handle pasted images or dropped files from clipboard."""
@@ -110,7 +321,7 @@ class AutoExpandingTextEdit(QTextEdit):
 
 
 class ComposerWidget(QWidget):
-    """Bottom input bar with attachment tray, token estimation, and Send/Stop button."""
+    """Bottom input bar with attachment tray, @ mention popup, token estimation, and Send/Stop button."""
 
     send_requested = pyqtSignal(str, list)
     stop_requested = pyqtSignal()
@@ -145,7 +356,6 @@ class ComposerWidget(QWidget):
 
         # Text input on top
         self.text_input = AutoExpandingTextEdit()
-        self.text_input.setPlaceholderText("How can I help you today? (Enter to send, Shift+Enter for newline)")
         self.text_input.send_pressed.connect(self._on_send_clicked)
         self.text_input.attachment_pasted.connect(self._add_attachment_dict)
         self.text_input.files_dropped.connect(self._on_files_dropped)
@@ -183,6 +393,10 @@ class ComposerWidget(QWidget):
 
         card_vlayout.addLayout(bottom_bar)
         layout.addWidget(input_card)
+
+    def set_skill_loader(self, loader: Optional[SkillLoader]) -> None:
+        """Connect skill loader to text edit mention popup."""
+        self.text_input.mention_popup.set_skill_loader(loader)
 
     def dragEnterEvent(self, event: QDragEnterEvent | None) -> None:
         if event is not None and event.mimeData().hasUrls():
@@ -249,40 +463,28 @@ class ComposerWidget(QWidget):
             self,
             "Select Attachment",
             "",
-            "All Supported (*.png *.jpg *.jpeg *.webp *.txt *.md *.py *.json *.pdf);;Images (*.png *.jpg *.jpeg *.webp);;Text Files (*.txt *.md *.py *.json);;PDF Files (*.pdf)",
+            "Documents & Images (*.png *.jpg *.jpeg *.webp *.pdf *.txt *.py *.json *.csv *.md);;All Files (*)",
         )
-        for fpath in files:
-            self._add_attachment(Path(fpath))
+        for f in files:
+            self._add_attachment(Path(f))
 
     def _add_attachment(self, path: Path) -> None:
-        if not path.exists():
-            return
-
-        try:
-            part = process_attachment(path)
-            if isinstance(part, ImagePart):
-                att = {
-                    "type": "image",
-                    "name": path.name,
-                    "media_type": part.media_type,
-                    "data": part.data,
-                }
-            elif isinstance(part, TextPart):
-                att = {
-                    "type": "text",
-                    "name": path.name,
-                    "text": part.text,
-                }
-            else:
-                return
+        att = process_attachment(path)
+        if att:
             self._add_attachment_dict(att)
-        except Exception:
-            pass
 
     def _add_attachment_dict(self, att: Dict[str, Any]) -> None:
         self._attachments.append(att)
         self._render_chips()
-        self._update_token_estimate()
+
+    def _remove_attachment(self, idx: int) -> None:
+        if 0 <= idx < len(self._attachments):
+            self._attachments.pop(idx)
+            self._render_chips()
+
+    def _clear_attachments(self) -> None:
+        self._attachments.clear()
+        self._render_chips()
 
     def _render_chips(self) -> None:
         while self.chips_layout.count() > 1:
@@ -292,39 +494,46 @@ class ComposerWidget(QWidget):
 
         if not self._attachments:
             self.chips_container.setVisible(False)
+            self._update_token_estimate()
             return
 
         self.chips_container.setVisible(True)
         for i, att in enumerate(self._attachments):
-            chip = QPushButton(f"{att.get('name', 'File')} ✕")
-            chip.setStyleSheet(
-                "background-color: #27272a; color: #f4f4f6; border: 1px solid rgba(255, 255, 255, 0.1); "
-                "border-radius: 6px; padding: 2px 8px; font-size: 11px;"
+            chip = QWidget()
+            chip.setObjectName("attachmentChip")
+            chip_layout = QHBoxLayout(chip)
+            chip_layout.setContentsMargins(6, 2, 4, 2)
+            chip_layout.setSpacing(4)
+
+            name = att.get("name", "Attachment")
+            lbl = QLabel(name)
+            lbl.setStyleSheet("font-size: 11.5px; color: #f4f4f6;")
+            chip_layout.addWidget(lbl)
+
+            rm_btn = QPushButton("✕")
+            rm_btn.setFixedSize(14, 14)
+            rm_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            rm_btn.setStyleSheet(
+                "QPushButton { background: transparent; border: none; color: #71717a; font-size: 10px; font-weight: bold; } "
+                "QPushButton:hover { color: #f87171; }"
             )
-            chip.setCursor(Qt.CursorShape.PointingHandCursor)
-            chip.clicked.connect(lambda _, idx=i: self._remove_attachment(idx))
-            self.chips_layout.insertWidget(self.chips_layout.count() - 1, chip)
+            rm_btn.clicked.connect(lambda _, idx=i: self._remove_attachment(idx))
+            chip_layout.addWidget(rm_btn)
 
-    def _remove_attachment(self, index: int) -> None:
-        if 0 <= index < len(self._attachments):
-            self._attachments.pop(index)
-            self._render_chips()
-            self._update_token_estimate()
+            self.chips_layout.insertWidget(i, chip)
 
-    def _clear_attachments(self) -> None:
-        self._attachments.clear()
-        self._render_chips()
         self._update_token_estimate()
 
     def _update_token_estimate(self) -> None:
         text = self.text_input.toPlainText()
         char_count = len(text)
-        est = max(0, char_count // 4)
+        est_tokens = max(0, char_count // 4)
+
         for att in self._attachments:
             if att.get("type") == "image":
-                est += 800
-            elif att.get("type") == "text":
-                est += len(att.get("text", "")) // 4
+                est_tokens += 1000
+            elif att.get("type") == "document":
+                txt = att.get("text", "")
+                est_tokens += len(txt) // 4
 
-        self.token_caption.setText(f"~{est} estimated tokens · {char_count} chars")
-
+        self.token_caption.setText(f"~{est_tokens:,} tokens")

@@ -82,6 +82,214 @@ QToolButton:checked {
     background-color: #1b1b1e;
 }
 
+#sidebarSkillsBtn {
+    background-color: transparent;
+    color: #d4d4d8;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-weight: 500;
+    font-size: 12.5px;
+    text-align: left;
+}
+
+#sidebarSkillsBtn:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+}
+
+#sidebarSkillsBtn[active="true"] {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.22);
+    color: #ffffff;
+    font-weight: 600;
+}
+
+#skillsView {
+    background-color: #141416;
+}
+
+#skillsHeaderTitle {
+    font-size: 24px;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: -0.4px;
+}
+
+#skillsHeaderSubtitle {
+    font-size: 13px;
+    color: #a1a1aa;
+    line-height: 1.4;
+}
+
+#skillImportBtn {
+    background-color: #222226;
+    color: #f4f4f6;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 7px;
+    padding: 7px 14px;
+    font-size: 12.5px;
+    font-weight: 500;
+}
+
+#skillImportBtn:hover {
+    background-color: #2c2c31;
+    border-color: rgba(255, 255, 255, 0.22);
+}
+
+#skillNewBtn {
+    background-color: #f4f4f6;
+    color: #141416;
+    border: none;
+    border-radius: 7px;
+    padding: 7px 16px;
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+#skillNewBtn:hover {
+    background-color: #ffffff;
+}
+
+.skillFilterPill {
+    background-color: rgba(255, 255, 255, 0.04);
+    color: #a1a1aa;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.skillFilterPill:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+}
+
+.skillFilterPill:checked {
+    background-color: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+    font-weight: 600;
+}
+
+#skillSearchBox {
+    background-color: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 7px;
+    padding: 6px 12px;
+    color: #f4f4f6;
+    font-size: 12px;
+}
+
+#skillSearchBox:focus {
+    border-color: #3b82f6;
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+#skillCard {
+    background-color: #18181c;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 9px;
+}
+
+#skillCard:hover {
+    border-color: rgba(255, 255, 255, 0.12);
+    background-color: #1d1d22;
+}
+
+#skillCardInitialBadge {
+    background-color: rgba(255, 255, 255, 0.07);
+    color: #e4e4e7;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+#skillCardTitle {
+    font-size: 14px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+#skillCardRefBadge {
+    background-color: rgba(59, 130, 246, 0.12);
+    color: #60a5fa;
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 10.5px;
+    font-weight: 500;
+}
+
+#skillCardDesc {
+    font-size: 12.5px;
+    color: #a1a1aa;
+    line-height: 1.35;
+}
+
+#skillCardActionBtn {
+    background-color: #27272a;
+    color: #f4f4f6;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+#skillCardActionBtn:hover {
+    background-color: #3f3f46;
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.22);
+}
+
+#skillCardDeleteBtn {
+    background-color: #27272a;
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+#skillCardDeleteBtn:hover {
+    background-color: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.4);
+}
+
+#skillFileTree {
+    background-color: #18181b;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 4px;
+}
+
+#skillFileTree::item {
+    padding: 5px 6px;
+    border-radius: 4px;
+    color: #a1a1aa;
+    font-size: 12px;
+}
+
+#skillFileTree::item:selected {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    font-weight: 500;
+}
+
+#skillFileEditor {
+    background-color: #111113;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    color: #e4e4e7;
+    font-size: 12.5px;
+    padding: 8px;
+}
+
 #searchBox {
     background-color: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.06);

@@ -335,7 +335,7 @@ def test_tools_tab_and_skills_management(qapp, tmp_path: Path) -> None:
     assert tool_reg.is_tool_enabled("calculator") is True
 
 
-def test_skills_menu_actions(qapp, tmp_path: Path) -> None:
+def test_skills_composer_mention_and_navigation(qapp, tmp_path: Path) -> None:
     from modelmesh.core.skills import SkillLoader
     from modelmesh.core.tools.builtin import create_builtin_registry
 
@@ -368,11 +368,205 @@ def test_skills_menu_actions(qapp, tmp_path: Path) -> None:
         storage=storage,
     )
 
-    assert win.skills_btn.text() == "Skills (1)"
+    # Test @ mention typing in composer
+    win.composer.text_input.setPlainText("@sql")
+    assert win.composer.text_input.mention_popup.list_widget.count() == 1
 
-    # Triggering skill should fill composer
-    win._on_skill_triggered("sql-expert")
-    assert "sql-expert" in win.composer.get_text()
+    # Test keyboard navigation
+    win.composer.text_input.mention_popup.select_next()
+    assert win.composer.text_input.mention_popup.list_widget.currentRow() == 0
+
+    # Confirm selection
+    win.composer.text_input.mention_popup.confirm_selection()
+    assert "@sql-expert " in win.composer.get_text()
+
+    # Test top toolbar does not contain skills_btn
+    assert not hasattr(win, "skills_btn") or win.skills_btn is None
+
+    # Test view switching via sidebar
+    assert win.main_stack.currentIndex() == 0
+    win.sidebar.skills_nav_btn.click()
+    assert win.main_stack.currentIndex() == 1
+    assert win.sidebar._active_view == "skills"
+
+    # Switching back on new chat
+    win.sidebar.new_chat_requested.emit()
+    assert win.main_stack.currentIndex() == 0
+    assert win.sidebar._active_view == "chat"
+
+
+def test_atomic_skill_token_deletion(qapp, tmp_path: Path) -> None:
+    from PyQt6.QtCore import QEvent, Qt
+    from PyQt6.QtGui import QKeyEvent, QTextCursor
+    from modelmesh.core.skills import SkillLoader
+    from modelmesh.ui.composer import ComposerWidget, SKILL_TOKEN_PROP
+
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir()
+    skill1_dir = skills_dir / "fastapi-expert"
+    skill1_dir.mkdir()
+    (skill1_dir / "SKILL.md").write_text(
+        "---\nname: fastapi-expert\ndescription: FastAPI skill.\n---\nRules.",
+        encoding="utf-8",
+    )
+
+    loader = SkillLoader(skills_dir=skills_dir)
+    composer = ComposerWidget()
+    composer.set_skill_loader(loader)
+
+    # 1. Type '@fast' and select skill
+    text_edit = composer.text_input
+    text_edit.setPlainText("@fast")
+    cursor = text_edit.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    text_edit.setTextCursor(cursor)
+    text_edit._check_mention_trigger()
+
+    assert text_edit.mention_popup.isVisible()
+    # Confirm selection
+    text_edit.mention_popup.confirm_selection()
+
+    # Plain text should now have '@fastapi-expert '
+    assert text_edit.toPlainText() == "@fastapi-expert "
+
+    # Verify formatting has SKILL_TOKEN_PROP
+    doc = text_edit.document()
+    check_cursor = QTextCursor(doc)
+    check_cursor.setPosition(2)
+    check_cursor.movePosition(QTextCursor.MoveOperation.NextCharacter, QTextCursor.MoveMode.KeepAnchor)
+    assert check_cursor.charFormat().property(SKILL_TOKEN_PROP) == "fastapi-expert"
+
+    # 2. Test Backspace right at the end (after trailing space) -> should delete the entire token atomically
+    cursor = text_edit.textCursor()
+    cursor.setPosition(len(text_edit.toPlainText()))
+    text_edit.setTextCursor(cursor)
+
+    bs_event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Backspace, Qt.KeyboardModifier.NoModifier)
+    text_edit.keyPressEvent(bs_event)
+
+    # The entire '@fastapi-expert ' token should be erased in one backspace!
+    assert text_edit.toPlainText() == ""
+
+    # 3. Test Backspace inside the token
+    text_edit.setPlainText("@fast")
+    cursor = text_edit.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    text_edit.setTextCursor(cursor)
+    text_edit.mention_popup.confirm_selection()
+    assert text_edit.toPlainText() == "@fastapi-expert "
+
+    # Place cursor inside "@fastapi-expert" (e.g. at index 5)
+    cursor = text_edit.textCursor()
+    cursor.setPosition(5)
+    text_edit.setTextCursor(cursor)
+
+    text_edit.keyPressEvent(bs_event)
+    assert text_edit.toPlainText() == ""
+
+    # 4. Test Delete key at start of token
+    text_edit.setPlainText("@fast")
+    cursor = text_edit.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    text_edit.setTextCursor(cursor)
+    text_edit.mention_popup.confirm_selection()
+    assert text_edit.toPlainText() == "@fastapi-expert "
+
+    cursor = text_edit.textCursor()
+    cursor.setPosition(0)
+    text_edit.setTextCursor(cursor)
+
+    del_event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Delete, Qt.KeyboardModifier.NoModifier)
+    text_edit.keyPressEvent(del_event)
+    assert text_edit.toPlainText() == ""
+
+
+def test_skills_view_and_cards(qapp, tmp_path: Path) -> None:
+    from modelmesh.core.skills import SkillLoader
+    from modelmesh.ui.skills_view import SkillsView
+
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir()
+    s1 = skills_dir / "fastapi"
+    scripts = s1 / "scripts"
+    scripts.mkdir(parents=True)
+    (s1 / "SKILL.md").write_text("---\nname: fastapi\ndescription: FastAPI skill.\n---\nBody.", encoding="utf-8")
+    (scripts / "deploy.py").write_text("# Deploy script", encoding="utf-8")
+
+    s2 = skills_dir / "simple"
+    s2.mkdir()
+    (s2 / "SKILL.md").write_text("---\nname: simple\ndescription: Simple skill.\n---\nBody2.", encoding="utf-8")
+
+    reg = create_test_registry()
+    storage = Storage(tmp_path / "test_sv.db")
+    router = Router(registry=reg)
+    loader = SkillLoader(skills_dir=skills_dir)
+    engine = ChatEngine(registry=reg, router=router, storage=storage, skill_loader=loader)
+
+    view = SkillsView(engine=engine)
+    assert view.cards_layout.count() >= 2
+
+    # Verify no file count badge in SkillCard
+    cards = [view.cards_layout.itemAt(i).widget() for i in range(view.cards_layout.count()) if view.cards_layout.itemAt(i).widget()]
+    for card in cards:
+        assert not hasattr(card, "ref_badge") or card.findChild(QLabel, "skillCardRefBadge") is None
+
+    # Test search filter
+    view.search_box.setText("fastapi")
+    cards = [view.cards_layout.itemAt(i).widget() for i in range(view.cards_layout.count()) if view.cards_layout.itemAt(i).widget()]
+    assert len(cards) == 1
+    assert cards[0].skill.name == "fastapi"
+
+    # Clear search
+    view.search_box.setText("")
+
+    # Test card toggle
+    cards[0].toggle_btn.click()
+    assert loader.get_skill("fastapi").enabled is False
+
+    # Test active filter pill
+    view.pill_active.click()
+    cards_active = [view.cards_layout.itemAt(i).widget() for i in range(view.cards_layout.count()) if view.cards_layout.itemAt(i).widget()]
+    assert len(cards_active) == 1
+    assert cards_active[0].skill.name == "simple"
+
+
+def test_skill_detail_dialog(qapp, tmp_path: Path) -> None:
+    from modelmesh.core.skills import SkillLoader
+    from modelmesh.ui.skill_detail_dialog import SkillDetailDialog
+
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir()
+    s1 = skills_dir / "arch"
+    docs_dir = s1 / "docs" / "api"
+    docs_dir.mkdir(parents=True)
+    (s1 / "SKILL.md").write_text("---\nname: arch\ndescription: System design.\n---\nInitial content.", encoding="utf-8")
+    (docs_dir / "endpoints.md").write_text("# Endpoints\nInitial endpoints.", encoding="utf-8")
+
+    loader = SkillLoader(skills_dir=skills_dir)
+    skill = loader.get_skill("arch")
+    assert skill is not None
+
+    dlg = SkillDetailDialog(skill=skill, loader=loader)
+    # Root has SKILL.md and docs/ folder
+    assert dlg.file_tree.topLevelItemCount() == 2
+
+    # Find docs/api/endpoints.md item and click
+    docs_item = dlg.file_tree.topLevelItem(1)
+    assert docs_item.text(0) == "docs/"
+    api_item = docs_item.child(0)
+    assert api_item.text(0) == "api/"
+    file_item = api_item.child(0)
+    assert file_item.text(0) == "endpoints.md"
+
+    dlg._on_tree_item_clicked(file_item, 0)
+    assert "Initial endpoints" in dlg.editor.toPlainText()
+
+    # Edit and save
+    dlg.editor.setPlainText("# Endpoints\nUpdated endpoints content.")
+    dlg._save_changes()
+
+    assert "Updated endpoints content" in (docs_dir / "endpoints.md").read_text(encoding="utf-8")
+
 
 
 

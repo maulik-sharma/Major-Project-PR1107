@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSplitter,
+    QStackedWidget,
     QStatusBar,
     QToolBar,
     QToolButton,
@@ -42,6 +43,7 @@ from modelmesh.ui.parameters_dialog import ParametersDialog
 from modelmesh.ui.router_lab import RouterLabDialog
 from modelmesh.ui.settings.settings_dialog import SettingsDialog
 from modelmesh.ui.sidebar import SidebarWidget
+from modelmesh.ui.skills_view import SkillsView
 from modelmesh.ui.theme import apply_theme
 from modelmesh.ui.usage_view import UsageDialog
 from modelmesh.ui.workers import ChatWorker
@@ -131,14 +133,6 @@ class MainWindow(QMainWindow):
         self.tools_btn.clicked.connect(self._toggle_tools)
         self.toolbar.addWidget(self.tools_btn)
 
-        # Skills dropdown menu button
-        self.skills_btn = QToolButton()
-        self.skills_btn.setText("Skills")
-        self.skills_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        self.skills_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._populate_skills_menu()
-        self.toolbar.addWidget(self.skills_btn)
-
         # 2. Main Layout Splitter
         main_splitter = QSplitter(Qt.Orientation.Horizontal, self)
         main_splitter.setObjectName("mainSplitter")
@@ -147,6 +141,7 @@ class MainWindow(QMainWindow):
         self.sidebar = SidebarWidget(self)
         self.sidebar.conversation_selected.connect(self._on_conversation_selected)
         self.sidebar.new_chat_requested.connect(self._on_new_chat)
+        self.sidebar.skills_requested.connect(self._show_skills_view)
         self.sidebar.delete_conversation_requested.connect(self._on_delete_conversation)
         self.sidebar.rename_conversation_requested.connect(self._on_rename_conversation)
         self.sidebar.settings_requested.connect(self._open_settings_dialog)
@@ -154,7 +149,11 @@ class MainWindow(QMainWindow):
         self.sidebar.router_lab_requested.connect(self._open_router_lab_dialog)
         main_splitter.addWidget(self.sidebar)
 
-        # Right Chat Area
+        # Central Stacked Area (Chat View vs Skills View)
+        self.main_stack = QStackedWidget(self)
+        self.main_stack.setObjectName("mainStack")
+
+        # Right Chat Area (Stack Index 0)
         chat_container = QWidget()
         chat_container.setObjectName("chatContainer")
         chat_layout = QVBoxLayout(chat_container)
@@ -169,11 +168,20 @@ class MainWindow(QMainWindow):
 
         # Bottom Composer
         self.composer = ComposerWidget(self)
+        self.composer.set_skill_loader(self.engine.skill_loader)
         self.composer.send_requested.connect(self._on_send_message)
         self.composer.stop_requested.connect(self._on_stop_streaming)
         chat_layout.addWidget(self.composer)
 
-        main_splitter.addWidget(chat_container)
+        self.main_stack.addWidget(chat_container)
+
+        # Dedicated Skills Workspace View (Stack Index 1)
+        self.skills_view = SkillsView(engine=self.engine, parent=self)
+        self.skills_view.skills_changed.connect(self._on_skills_changed)
+        self.skills_view.back_to_chat_requested.connect(self._show_chat_view)
+        self.main_stack.addWidget(self.skills_view)
+
+        main_splitter.addWidget(self.main_stack)
         main_splitter.setSizes([260, 920])
 
         self.setCentralWidget(main_splitter)
@@ -222,6 +230,19 @@ class MainWindow(QMainWindow):
         else:
             self.model_combo.setToolTip("Model is selected automatically based on the chosen routing strategy.")
 
+    def _show_skills_view(self) -> None:
+        """Switch central view to the dedicated Skills workspace."""
+        self.main_stack.setCurrentIndex(1)
+        self.sidebar.set_active_view("skills")
+        self.skills_view.refresh_skills()
+        self.status_bar.showMessage("Viewing Skills workspace.")
+
+    def _show_chat_view(self) -> None:
+        """Switch central view to the chat conversation view."""
+        self.main_stack.setCurrentIndex(0)
+        self.sidebar.set_active_view("chat")
+        self.status_bar.showMessage("Ready")
+
     def _load_initial_data(self) -> None:
         """Load conversation list from SQLite storage or create first chat."""
         conversations = self.storage.list_conversations()
@@ -233,6 +254,7 @@ class MainWindow(QMainWindow):
 
     def _on_new_chat(self) -> None:
         """Create a new conversation session."""
+        self._show_chat_view()
         conv_id = self.storage.create_conversation(title="New Chat")
         conversations = self.storage.list_conversations()
         self.sidebar.set_conversations(conversations, selected_id=conv_id)
@@ -240,6 +262,7 @@ class MainWindow(QMainWindow):
 
     def _on_conversation_selected(self, conv_id: str) -> None:
         """Switch active conversation and render history in ChatView."""
+        self._show_chat_view()
         if self.current_worker and self.current_worker.isRunning():
             self.current_worker.stop()
 
@@ -527,39 +550,12 @@ class MainWindow(QMainWindow):
         self.tools_btn.setText(f"Tools: {'On' if active else 'Off'}")
         self.status_bar.showMessage(f"Tools {'enabled' if active else 'disabled'}.")
 
-    def _populate_skills_menu(self) -> None:
-        """Populate the Skills button dropdown menu with installed skills and management actions."""
-        menu = QMenu(self)
-        skills = self.engine.skill_loader.list_skills() if self.engine.skill_loader else []
-        self.skills_btn.setText(f"Skills ({len(skills)})" if skills else "Skills")
-
-        if skills:
-            for s in skills:
-                desc_snippet = f" - {s.description[:35]}..." if s.description else ""
-                action = menu.addAction(f"{s.name}{desc_snippet}")
-                action.triggered.connect(lambda _, name=s.name: self._on_skill_triggered(name))
-            menu.addSeparator()
-
-        new_skill_action = menu.addAction("+ Create New Skill...")
-        new_skill_action.triggered.connect(self._create_new_skill)
-
-        manage_action = menu.addAction("Manage Skills & Tools...")
-        manage_action.triggered.connect(lambda: self._open_settings_dialog(tab_index=3))
-
-        self.skills_btn.setMenu(menu)
-
-    def _on_skill_triggered(self, skill_name: str) -> None:
-        """Insert skill directive into composer and focus it."""
-        current_text = self.composer.get_text().strip()
-        prefix = f"Please use the '{skill_name}' skill to "
-        if not current_text:
-            self.composer.text_input.setPlainText(prefix)
-        else:
-            self.composer.text_input.setPlainText(f"{prefix}\n{current_text}")
-        self.composer.text_input.setFocus()
+    def _on_skills_changed(self) -> None:
+        """Update composer autocomplete when skills change."""
+        self.composer.set_skill_loader(self.engine.skill_loader)
 
     def _create_new_skill(self) -> None:
-        """Open create skill dialog and refresh menu on save."""
+        """Open create skill dialog and refresh workspace on save."""
         from modelmesh.ui.settings.tools_tab import CreateSkillDialog
         skills_dir = (
             self.engine.skill_loader.skills_dir
@@ -570,7 +566,8 @@ class MainWindow(QMainWindow):
         if dlg.exec() == CreateSkillDialog.DialogCode.Accepted:
             if self.engine.skill_loader:
                 self.engine.skill_loader.reload()
-            self._populate_skills_menu()
+            self.skills_view.refresh_skills()
+            self._on_skills_changed()
             self.status_bar.showMessage("New skill created successfully.")
 
     def _open_settings_dialog(self, tab_index: int = 0) -> None:
@@ -587,7 +584,8 @@ class MainWindow(QMainWindow):
 
     def _on_settings_updated(self) -> None:
         self._populate_model_combo()
-        self._populate_skills_menu()
+        self._on_skills_changed()
+        self.skills_view.refresh_skills()
 
     def _open_usage_dialog(self) -> None:
         dlg = UsageDialog(storage=self.storage, parent=self)

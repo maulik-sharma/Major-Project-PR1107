@@ -1,4 +1,5 @@
 import json
+import re
 import threading
 import time
 from typing import Any, Dict, Iterator, List, Optional
@@ -79,6 +80,21 @@ class ChatEngine:
                     effective_system_prompt = f"{effective_system_prompt}\n\n{skills_index}"
                 else:
                     effective_system_prompt = skills_index
+
+            # Check for explicit @<skill_name> mentions in the last message
+            if request.messages:
+                last_msg_text = request.messages[-1].text_content()
+                for skill in self.skill_loader.list_skills(only_enabled=True):
+                    pattern = rf"@\b{re.escape(skill.name)}\b"
+                    if re.search(pattern, last_msg_text, re.IGNORECASE):
+                        skill_instructions = f"Skill Instructions for '{skill.name}':\n{skill.body}"
+                        if skill.resources:
+                            res_list = ", ".join(skill.resources.keys())
+                            skill_instructions += f"\n(Sub-resources: {res_list}. Use 'load_skill' to inspect.)"
+                        if effective_system_prompt:
+                            effective_system_prompt = f"{effective_system_prompt}\n\n{skill_instructions}"
+                        else:
+                            effective_system_prompt = skill_instructions
 
             if effective_tools and self.tool_registry is not None:
                 if not any(t.name == "load_skill" for t in effective_tools):
