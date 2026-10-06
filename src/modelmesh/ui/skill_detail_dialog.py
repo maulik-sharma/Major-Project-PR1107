@@ -38,6 +38,7 @@ class SkillDetailDialog(QDialog):
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.skill = skill
         self.loader = loader
         self.setWindowTitle(f"Skill: {skill.name}")
@@ -62,33 +63,25 @@ class SkillDetailDialog(QDialog):
 
         title_row = QHBoxLayout()
         title_lbl = QLabel(self.skill.name)
-        title_lbl.setStyleSheet("font-size: 17px; font-weight: 600; color: #f4f4f6;")
+        title_lbl.setStyleSheet("font-size: 17px; font-weight: 600;")
         title_row.addWidget(title_lbl)
 
         if self.skill.resources:
             badge = QLabel(f"{len(self.skill.resources) + 1} files")
-            badge.setStyleSheet(
-                "background-color: rgba(255, 255, 255, 0.08); color: #a1a1aa; "
-                "padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;"
-            )
+            badge.setObjectName("toolCategoryBadge")
             title_row.addWidget(badge)
 
         title_row.addStretch()
 
         open_folder_btn = QPushButton("Open Folder")
         open_folder_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        open_folder_btn.setStyleSheet(
-            "QPushButton { background: rgba(255,255,255,0.06); color: #a1a1aa; "
-            "border: 1px solid rgba(255,255,255,0.1); border-radius: 5px; padding: 4px 10px; font-size: 12px; } "
-            "QPushButton:hover { background: rgba(255,255,255,0.12); color: #ffffff; }"
-        )
         open_folder_btn.clicked.connect(self._open_folder)
         title_row.addWidget(open_folder_btn)
 
         header_layout.addLayout(title_row)
 
         desc_lbl = QLabel(self.skill.description)
-        desc_lbl.setStyleSheet("color: #a1a1aa; font-size: 12.5px;")
+        desc_lbl.setObjectName("skillCardDesc")
         desc_lbl.setWordWrap(True)
         header_layout.addWidget(desc_lbl)
 
@@ -104,7 +97,7 @@ class SkillDetailDialog(QDialog):
         left_layout.setSpacing(8)
 
         tree_header = QLabel("Files & Subfolders")
-        tree_header.setStyleSheet("font-size: 12px; font-weight: 600; color: #a1a1aa; text-transform: uppercase;")
+        tree_header.setStyleSheet("font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;")
         left_layout.addWidget(tree_header)
 
         self.file_tree = QTreeWidget()
@@ -118,21 +111,12 @@ class SkillDetailDialog(QDialog):
 
         add_file_btn = QPushButton("+ New File")
         add_file_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        add_file_btn.setStyleSheet(
-            "QPushButton { background: rgba(255,255,255,0.05); color: #d4d4d8; "
-            "border: 1px solid rgba(255,255,255,0.12); border-radius: 5px; padding: 5px 8px; font-size: 11.5px; } "
-            "QPushButton:hover { background: rgba(255,255,255,0.1); color: #ffffff; }"
-        )
         add_file_btn.clicked.connect(self._add_file)
         tree_btns_layout.addWidget(add_file_btn)
 
         del_file_btn = QPushButton("Delete")
+        del_file_btn.setObjectName("skillCardDeleteBtn")
         del_file_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        del_file_btn.setStyleSheet(
-            "QPushButton { background: rgba(255,255,255,0.04); color: #fca5a5; "
-            "border: 1px solid rgba(239,68,68,0.2); border-radius: 5px; padding: 5px 8px; font-size: 11.5px; } "
-            "QPushButton:hover { background: rgba(239,68,68,0.15); color: #ef4444; }"
-        )
         del_file_btn.clicked.connect(self._delete_selected_file)
         tree_btns_layout.addWidget(del_file_btn)
 
@@ -146,7 +130,7 @@ class SkillDetailDialog(QDialog):
         right_layout.setSpacing(6)
 
         self.current_file_lbl = QLabel("SKILL.md")
-        self.current_file_lbl.setStyleSheet("color: #71717a; font-size: 12px; font-family: monospace;")
+        self.current_file_lbl.setStyleSheet("font-size: 12px; font-family: monospace;")
         right_layout.addWidget(self.current_file_lbl)
 
         self.editor = QTextEdit()
@@ -169,12 +153,8 @@ class SkillDetailDialog(QDialog):
         button_row.addStretch()
 
         self.save_btn = QPushButton("Save Changes")
+        self.save_btn.setObjectName("skillNewBtn")
         self.save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.save_btn.setStyleSheet(
-            "QPushButton { background-color: #2563eb; color: #ffffff; border: none; "
-            "border-radius: 6px; padding: 6px 16px; font-size: 12.5px; font-weight: 500; } "
-            "QPushButton:hover { background-color: #1d4ed8; }"
-        )
         self.save_btn.clicked.connect(self._save_changes)
         button_row.addWidget(self.save_btn)
 

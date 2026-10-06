@@ -64,10 +64,13 @@ class ChatView(QWebEngineView):
     def __init__(self, parent: Optional[Any] = None) -> None:
         super().__init__(parent)
 
+        self._theme_name = "dark"
+        self._is_page_loaded = False
+        self._queued_js: List[str] = []
+
         self._page = CustomWebEnginePage(self)
         self.setPage(self._page)
-        self.page().setBackgroundColor(QColor("#141417"))
-        self.setStyleSheet("background-color: #141417; border: none;")
+        self.set_theme("dark")
 
         self.bridge = ChatBridge()
         self.bridge.regenerate_requested.connect(self.regenerate_requested)
@@ -86,8 +89,6 @@ class ChatView(QWebEngineView):
         self._stream_timer.start()
 
         # Load chat.html
-        self._is_page_loaded = False
-        self._queued_js: List[str] = []
         self.loadFinished.connect(self._on_load_finished)
 
         html_path = Path(__file__).parent / "web" / "chat.html"
@@ -95,6 +96,7 @@ class ChatView(QWebEngineView):
 
     def _on_load_finished(self, ok: bool) -> None:
         self._is_page_loaded = True
+        self._run_js("set_theme", self._theme_name)
         for script in self._queued_js:
             self.page().runJavaScript(script)
         self._queued_js.clear()
@@ -214,4 +216,8 @@ class ChatView(QWebEngineView):
 
     def set_theme(self, theme_name: str) -> None:
         """Switch dark / light theme in chat view."""
+        self._theme_name = theme_name
+        bg_color = "#ffffff" if theme_name == "light" else "#141417"
+        self.setStyleSheet(f"background-color: {bg_color}; border: none;")
+        self.page().setBackgroundColor(QColor(bg_color))
         self._run_js("set_theme", theme_name)

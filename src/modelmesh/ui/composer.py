@@ -252,7 +252,6 @@ class AutoExpandingTextEdit(QTextEdit):
             # Normal trailing space and format reset
             normal_format = QTextCharFormat()
             normal_format.setBackground(Qt.GlobalColor.transparent)
-            normal_format.setForeground(QColor("#f4f4f6"))
             normal_format.setFontWeight(QFont.Weight.Normal)
 
             cursor.insertText(" ", normal_format)
@@ -329,6 +328,7 @@ class ComposerWidget(QWidget):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.setObjectName("composerWidget")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAcceptDrops(True)
 
         self._attachments: List[Dict[str, Any]] = []
@@ -507,7 +507,7 @@ class ComposerWidget(QWidget):
 
             name = att.get("name", "Attachment")
             lbl = QLabel(name)
-            lbl.setStyleSheet("font-size: 11.5px; color: #f4f4f6;")
+            lbl.setStyleSheet("font-size: 11.5px;")
             chip_layout.addWidget(lbl)
 
             rm_btn = QPushButton("✕")

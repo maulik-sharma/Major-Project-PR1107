@@ -32,11 +32,11 @@ class SidebarWidget(QWidget):
     rename_conversation_requested = pyqtSignal(str, str)
     settings_requested = pyqtSignal()
     usage_requested = pyqtSignal()
-    router_lab_requested = pyqtSignal()
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.setObjectName("sidebar")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setFixedWidth(260)
 
         self._all_conversations: List[Dict[str, Any]] = []
@@ -108,7 +108,7 @@ class SidebarWidget(QWidget):
         self.conv_list.itemClicked.connect(self._on_item_clicked)
         layout.addWidget(self.conv_list, stretch=1)
 
-        # 3. Footer (Usage, Router Lab, Settings)
+        # 3. Footer (Usage, Settings)
         footer_widget = QWidget()
         footer_widget.setObjectName("sidebarFooter")
         footer_layout = QVBoxLayout(footer_widget)
@@ -120,12 +120,6 @@ class SidebarWidget(QWidget):
         usage_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         usage_btn.clicked.connect(self.usage_requested)
         footer_layout.addWidget(usage_btn)
-
-        lab_btn = QPushButton("Router Lab")
-        lab_btn.setProperty("class", "sidebarActionBtn")
-        lab_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        lab_btn.clicked.connect(self.router_lab_requested)
-        footer_layout.addWidget(lab_btn)
 
         settings_btn = QPushButton("Settings")
         settings_btn.setProperty("class", "sidebarActionBtn")

@@ -1,5 +1,11 @@
 """QSS styles and theme definitions for ModelMesh PyQt6 interface."""
 
+from __future__ import annotations
+
+from typing import Any
+
+from PyQt6.QtWidgets import QApplication
+
 DARK_THEME_QSS = """
 QMainWindow, QDialog {
     background-color: #141417;
@@ -106,24 +112,24 @@ QToolButton:checked {
     font-weight: 600;
 }
 
-#skillsView {
+#skillsView, #toolsView {
     background-color: #141416;
 }
 
-#skillsHeaderTitle {
+#skillsHeaderTitle, #toolsHeaderTitle {
     font-size: 24px;
     font-weight: 700;
     color: #ffffff;
     letter-spacing: -0.4px;
 }
 
-#skillsHeaderSubtitle {
+#skillsHeaderSubtitle, #toolsHeaderSubtitle {
     font-size: 13px;
     color: #a1a1aa;
     line-height: 1.4;
 }
 
-#skillImportBtn {
+#skillImportBtn, #toolsBrowseBtn {
     background-color: #222226;
     color: #f4f4f6;
     border: 1px solid rgba(255, 255, 255, 0.12);
@@ -133,12 +139,12 @@ QToolButton:checked {
     font-weight: 500;
 }
 
-#skillImportBtn:hover {
+#skillImportBtn:hover, #toolsBrowseBtn:hover {
     background-color: #2c2c31;
     border-color: rgba(255, 255, 255, 0.22);
 }
 
-#skillNewBtn {
+#skillNewBtn, #toolTestRunBtn {
     background-color: #f4f4f6;
     color: #141416;
     border: none;
@@ -148,11 +154,11 @@ QToolButton:checked {
     font-weight: 600;
 }
 
-#skillNewBtn:hover {
+#skillNewBtn:hover, #toolTestRunBtn:hover {
     background-color: #ffffff;
 }
 
-.skillFilterPill {
+.skillFilterPill, .toolFilterPill {
     background-color: rgba(255, 255, 255, 0.04);
     color: #a1a1aa;
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -162,19 +168,19 @@ QToolButton:checked {
     font-weight: 500;
 }
 
-.skillFilterPill:hover {
+.skillFilterPill:hover, .toolFilterPill:hover {
     background-color: rgba(255, 255, 255, 0.08);
     color: #ffffff;
 }
 
-.skillFilterPill:checked {
+.skillFilterPill:checked, .toolFilterPill:checked {
     background-color: rgba(255, 255, 255, 0.14);
     border-color: rgba(255, 255, 255, 0.25);
     color: #ffffff;
     font-weight: 600;
 }
 
-#skillSearchBox {
+#skillSearchBox, #toolSearchBox, #searchBox {
     background-color: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 7px;
@@ -183,23 +189,23 @@ QToolButton:checked {
     font-size: 12px;
 }
 
-#skillSearchBox:focus {
+#skillSearchBox:focus, #toolSearchBox:focus, #searchBox:focus {
     border-color: #3b82f6;
     background-color: rgba(255, 255, 255, 0.06);
 }
 
-#skillCard {
+#skillCard, #toolCard, #toolsWorkspaceCard, #toolDetailHeader, #usageSummaryCard {
     background-color: #18181c;
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 9px;
 }
 
-#skillCard:hover {
+#skillCard:hover, #toolCard:hover {
     border-color: rgba(255, 255, 255, 0.12);
     background-color: #1d1d22;
 }
 
-#skillCardInitialBadge {
+#skillCardInitialBadge, #toolCardInitialBadge {
     background-color: rgba(255, 255, 255, 0.07);
     color: #e4e4e7;
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -208,28 +214,19 @@ QToolButton:checked {
     font-weight: 600;
 }
 
-#skillCardTitle {
+#skillCardTitle, #toolCardTitle {
     font-size: 14px;
     font-weight: 600;
     color: #ffffff;
 }
 
-#skillCardRefBadge {
-    background-color: rgba(59, 130, 246, 0.12);
-    color: #60a5fa;
-    border-radius: 4px;
-    padding: 2px 7px;
-    font-size: 10.5px;
-    font-weight: 500;
-}
-
-#skillCardDesc {
+#skillCardDesc, #toolCardDesc {
     font-size: 12.5px;
     color: #a1a1aa;
     line-height: 1.35;
 }
 
-#skillCardActionBtn {
+#skillCardActionBtn, #toolCardActionBtn {
     background-color: #27272a;
     color: #f4f4f6;
     border: 1px solid rgba(255, 255, 255, 0.12);
@@ -239,7 +236,7 @@ QToolButton:checked {
     font-weight: 500;
 }
 
-#skillCardActionBtn:hover {
+#skillCardActionBtn:hover, #toolCardActionBtn:hover {
     background-color: #3f3f46;
     color: #ffffff;
     border-color: rgba(255, 255, 255, 0.22);
@@ -290,29 +287,6 @@ QToolButton:checked {
     padding: 8px;
 }
 
-#toolsView {
-    background-color: #141416;
-}
-
-#toolsHeaderTitle {
-    font-size: 24px;
-    font-weight: 700;
-    color: #ffffff;
-    letter-spacing: -0.4px;
-}
-
-#toolsHeaderSubtitle {
-    font-size: 13px;
-    color: #a1a1aa;
-    line-height: 1.4;
-}
-
-#toolsWorkspaceCard {
-    background-color: #18181c;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
-}
-
 #toolsWorkspaceInput {
     background-color: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -326,159 +300,6 @@ QToolButton:checked {
 #toolsWorkspaceInput:focus {
     border-color: #3b82f6;
     background-color: rgba(255, 255, 255, 0.06);
-}
-
-#toolsBrowseBtn {
-    background-color: #27272a;
-    color: #f4f4f6;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
-    padding: 5px 12px;
-    font-size: 12px;
-    font-weight: 500;
-}
-
-#toolsBrowseBtn:hover {
-    background-color: #3f3f46;
-    color: #ffffff;
-}
-
-.toolFilterPill {
-    background-color: rgba(255, 255, 255, 0.04);
-    color: #a1a1aa;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 20px;
-    padding: 5px 12px;
-    font-size: 12px;
-    font-weight: 500;
-}
-
-.toolFilterPill:hover {
-    background-color: rgba(255, 255, 255, 0.08);
-    color: #ffffff;
-}
-
-.toolFilterPill:checked {
-    background-color: rgba(255, 255, 255, 0.14);
-    border-color: rgba(255, 255, 255, 0.25);
-    color: #ffffff;
-    font-weight: 600;
-}
-
-#toolSearchBox {
-    background-color: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 7px;
-    padding: 6px 12px;
-    color: #f4f4f6;
-    font-size: 12px;
-}
-
-#toolSearchBox:focus {
-    border-color: #3b82f6;
-    background-color: rgba(255, 255, 255, 0.06);
-}
-
-#toolCard {
-    background-color: #18181c;
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 9px;
-}
-
-#toolCard:hover {
-    border-color: rgba(255, 255, 255, 0.12);
-    background-color: #1d1d22;
-}
-
-#toolCardInitialBadge {
-    background-color: rgba(255, 255, 255, 0.07);
-    color: #e4e4e7;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 7px;
-    font-size: 13px;
-    font-weight: 600;
-}
-
-#toolCardTitle {
-    font-size: 14px;
-    font-weight: 600;
-    color: #ffffff;
-    font-family: 'JetBrains Mono', 'Menlo', monospace;
-}
-
-#toolCategoryBadge {
-    background-color: rgba(255, 255, 255, 0.07);
-    color: #d4d4d8;
-    border-radius: 4px;
-    padding: 2px 7px;
-    font-size: 10.5px;
-    font-weight: 500;
-}
-
-#toolParamBadge {
-    background-color: rgba(168, 85, 247, 0.12);
-    color: #c084fc;
-    border: 1px solid rgba(168, 85, 247, 0.25);
-    border-radius: 4px;
-    padding: 1px 6px;
-    font-size: 10.5px;
-    font-family: 'JetBrains Mono', 'Menlo', monospace;
-}
-
-#toolCardDesc {
-    font-size: 12.5px;
-    color: #a1a1aa;
-    line-height: 1.35;
-}
-
-#toolCardActionBtn {
-    background-color: #27272a;
-    color: #f4f4f6;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
-    padding: 4px 12px;
-    font-size: 12px;
-    font-weight: 500;
-}
-
-#toolCardActionBtn:hover {
-    background-color: #3f3f46;
-    color: #ffffff;
-    border-color: rgba(255, 255, 255, 0.22);
-}
-
-#toolDetailHeader {
-    background-color: #18181c;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
-}
-
-#toolTestRunBtn {
-    background-color: #2563eb;
-    color: #ffffff;
-    border: none;
-    border-radius: 6px;
-    padding: 6px 14px;
-    font-size: 12px;
-    font-weight: 600;
-}
-
-#toolTestRunBtn:hover {
-    background-color: #1d4ed8;
-}
-
-#searchBox {
-    background-color: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 7px;
-    padding: 6px 10px;
-    color: #f4f4f6;
-    font-size: 12px;
-}
-
-#searchBox:focus {
-    border-color: #3b82f6;
-    background-color: rgba(255, 255, 255, 0.05);
 }
 
 #sidebarSectionLabel {
@@ -543,17 +364,14 @@ QToolButton:checked {
 }
 
 /* Chat Container */
-#chatContainer {
-    background-color: #141417;
-}
-
-#mainSplitter {
+#chatContainer, #mainStack, #mainSplitter {
     background-color: #141417;
 }
 
 /* Composer Panel */
 #composerWidget {
     background-color: #141417;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
     padding: 10px 24px 18px 24px;
 }
 
@@ -624,6 +442,12 @@ QToolButton:checked {
 #tokenCaption {
     color: #52525b;
     font-size: 11px;
+}
+
+#attachmentChip {
+    background-color: #222226;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
 }
 
 /* Strategy & Model Dropdowns */
@@ -854,17 +678,783 @@ QScrollBar::handle:vertical:hover {
     background: rgba(255, 255, 255, 0.22);
 }
 
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-    height: 0px;
+/* Dynamic Component Overrides */
+#toolbarLabel {
+    font-weight: 500;
+    color: #a1a1aa;
+    font-size: 12px;
+}
+
+#toolsWorkspaceLabel {
+    font-weight: 600;
+    color: #f4f4f6;
+    font-size: 12px;
+}
+
+#toolToggleBtn, #skillToggleBtn {
+    background-color: rgba(255, 255, 255, 0.04);
+    color: #71717a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 11.5px;
+    font-weight: 500;
+}
+
+#toolToggleBtn:hover, #skillToggleBtn:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #a1a1aa;
+}
+
+#toolToggleBtn[active="true"], #skillToggleBtn[active="true"] {
+    background-color: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+#toolToggleBtn[active="true"]:hover, #skillToggleBtn[active="true"]:hover {
+    background-color: rgba(16, 185, 129, 0.25);
+}
+
+#emptyPlaceholderLabel {
+    color: #71717a;
+    font-size: 13px;
+    padding: 30px;
+    text-align: center;
+}
+"""
+
+LIGHT_THEME_QSS = """
+QMainWindow, QDialog {
+    background-color: #f8fafc;
+    color: #0f172a;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px;
+}
+
+QWidget {
+    background-color: transparent;
+    color: #0f172a;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* ToolBar and Header */
+QToolBar {
+    background-color: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 6px 14px;
+    spacing: 10px;
+}
+
+QToolButton {
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    color: #475569;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+QToolButton:hover {
+    background-color: #f1f5f9;
+    color: #0f172a;
+    border-color: #94a3b8;
+}
+
+QToolButton:checked {
+    background-color: #eff6ff;
+    color: #2563eb;
+    border-color: #93c5fd;
+}
+
+/* Sidebar */
+#sidebar {
+    background-color: #f8fafc;
+    border-right: 1px solid #e2e8f0;
+}
+
+#sidebarHeader {
+    background-color: transparent;
+    padding: 14px 14px 8px 14px;
+}
+
+#brandTitle {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+    color: #0f172a;
+}
+
+#newChatBtn {
+    background-color: #ffffff;
+    color: #0f172a;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-weight: 500;
+    font-size: 13px;
+    text-align: left;
+}
+
+#newChatBtn:hover {
+    background-color: #f1f5f9;
+    border-color: #94a3b8;
+}
+
+#newChatBtn:pressed {
+    background-color: #e2e8f0;
+}
+
+#sidebarSkillsBtn, #sidebarToolsBtn {
+    background-color: transparent;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-weight: 500;
+    font-size: 12.5px;
+    text-align: left;
+}
+
+#sidebarSkillsBtn:hover, #sidebarToolsBtn:hover {
+    background-color: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #0f172a;
+}
+
+#sidebarSkillsBtn[active="true"], #sidebarToolsBtn[active="true"] {
+    background-color: #ffffff;
+    border-color: #94a3b8;
+    color: #0f172a;
+    font-weight: 600;
+}
+
+#skillsView, #toolsView {
+    background-color: #f8fafc;
+}
+
+#skillsHeaderTitle, #toolsHeaderTitle {
+    font-size: 24px;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.4px;
+}
+
+#skillsHeaderSubtitle, #toolsHeaderSubtitle {
+    font-size: 13px;
+    color: #64748b;
+    line-height: 1.4;
+}
+
+#skillImportBtn, #toolsBrowseBtn {
+    background-color: #ffffff;
+    color: #0f172a;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    padding: 7px 14px;
+    font-size: 12.5px;
+    font-weight: 500;
+}
+
+#skillImportBtn:hover, #toolsBrowseBtn:hover {
+    background-color: #f1f5f9;
+    border-color: #94a3b8;
+}
+
+#skillNewBtn, #toolTestRunBtn {
+    background-color: #2563eb;
+    color: #ffffff;
+    border: none;
+    border-radius: 7px;
+    padding: 7px 16px;
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+#skillNewBtn:hover, #toolTestRunBtn:hover {
+    background-color: #1d4ed8;
+}
+
+.skillFilterPill, .toolFilterPill {
+    background-color: #ffffff;
+    color: #64748b;
+    border: 1px solid #cbd5e1;
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.skillFilterPill:hover, .toolFilterPill:hover {
+    background-color: #f1f5f9;
+    color: #0f172a;
+}
+
+.skillFilterPill:checked, .toolFilterPill:checked {
+    background-color: #eff6ff;
+    border-color: #93c5fd;
+    color: #2563eb;
+    font-weight: 600;
+}
+
+#skillSearchBox, #toolSearchBox, #searchBox {
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    padding: 6px 12px;
+    color: #0f172a;
+    font-size: 12px;
+}
+
+#skillSearchBox:focus, #toolSearchBox:focus, #searchBox:focus {
+    border-color: #2563eb;
+    background-color: #ffffff;
+}
+
+#skillCard, #toolCard, #toolsWorkspaceCard, #toolDetailHeader, #usageSummaryCard {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 9px;
+}
+
+#skillCard:hover, #toolCard:hover {
+    border-color: #cbd5e1;
+    background-color: #f8fafc;
+}
+
+#skillCardInitialBadge, #toolCardInitialBadge {
+    background-color: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+#skillCardTitle, #toolCardTitle {
+    font-size: 14px;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+#skillCardDesc, #toolCardDesc {
+    font-size: 12.5px;
+    color: #64748b;
+    line-height: 1.35;
+}
+
+#skillCardActionBtn, #toolCardActionBtn {
+    background-color: #f1f5f9;
+    color: #334155;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+#skillCardActionBtn:hover, #toolCardActionBtn:hover {
+    background-color: #e2e8f0;
+    color: #0f172a;
+}
+
+#skillCardDeleteBtn {
+    background-color: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+#skillCardDeleteBtn:hover {
+    background-color: #fee2e2;
+}
+
+#skillFileTree {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 4px;
+}
+
+#skillFileTree::item {
+    padding: 5px 6px;
+    border-radius: 4px;
+    color: #475569;
+    font-size: 12px;
+}
+
+#skillFileTree::item:selected {
+    background-color: #eff6ff;
+    color: #1e40af;
+    font-weight: 500;
+}
+
+#skillFileEditor {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    color: #0f172a;
+    font-size: 12.5px;
+    padding: 8px;
+}
+
+#toolsWorkspaceInput {
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 5px 10px;
+    color: #0f172a;
+    font-size: 12px;
+    font-family: 'JetBrains Mono', 'Menlo', monospace;
+}
+
+#toolsWorkspaceInput:focus {
+    border-color: #2563eb;
+}
+
+#sidebarSectionLabel {
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    padding: 10px 14px 4px 14px;
+}
+
+#conversationList {
+    background-color: transparent;
+    border: none;
+    padding: 4px 6px;
+}
+
+#conversationList::item {
+    background-color: transparent;
+    color: #334155;
+    border-radius: 6px;
+    padding: 7px 10px;
+    margin-bottom: 1px;
+    font-size: 13px;
+}
+
+#conversationList::item:hover {
+    background-color: rgba(0, 0, 0, 0.04);
+    color: #0f172a;
+}
+
+#conversationList::item:selected {
+    background-color: #e0edff;
+    color: #1e40af;
+    font-weight: 500;
+}
+
+#sidebarFooter {
+    background-color: transparent;
+    border-top: 1px solid #e2e8f0;
+    padding: 8px 10px;
+}
+
+#sidebarFooter QPushButton, .sidebarActionBtn {
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    color: #64748b;
+    padding: 6px 10px;
+    text-align: left;
+    font-size: 12.5px;
+    font-weight: 400;
+}
+
+#sidebarFooter QPushButton:hover, .sidebarActionBtn:hover {
+    background-color: rgba(0, 0, 0, 0.04);
+    color: #0f172a;
+}
+
+#sidebarFooter QPushButton:pressed, .sidebarActionBtn:pressed {
+    background-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Chat Container */
+#chatContainer, #mainStack, #mainSplitter {
+    background-color: #ffffff;
+}
+
+/* Composer Panel */
+#composerWidget {
+    background-color: #ffffff;
+    border-top: 1px solid #e2e8f0;
+    padding: 10px 24px 18px 24px;
+}
+
+#inputCard {
+    background-color: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 18px;
+    padding: 10px 14px 8px 14px;
+}
+
+#inputCard:focus-within {
+    border-color: #2563eb;
+    background-color: #ffffff;
+}
+
+#messageInput {
+    background-color: transparent;
+    border: none;
+    color: #0f172a;
+    font-size: 14.5px;
+    line-height: 1.5;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 2px 0;
+}
+
+#sendBtn {
+    background-color: #2563eb;
+    color: #ffffff;
+    border: none;
+    border-radius: 14px;
+    padding: 5px 14px;
+    font-weight: 600;
+    font-size: 12.5px;
+}
+
+#sendBtn:hover {
+    background-color: #1d4ed8;
+}
+
+#stopBtn {
+    background-color: #ef4444;
+    color: #ffffff;
+    border: none;
+    border-radius: 14px;
+    padding: 5px 14px;
+    font-weight: 600;
+    font-size: 12.5px;
+}
+
+#stopBtn:hover {
+    background-color: #dc2626;
+}
+
+#attachBtn {
+    background-color: transparent;
+    border: none;
+    border-radius: 14px;
+    color: #64748b;
+    font-size: 16px;
+    padding: 4px;
+}
+
+#attachBtn:hover {
+    background-color: rgba(0, 0, 0, 0.06);
+    color: #0f172a;
+}
+
+#tokenCaption {
+    color: #64748b;
+    font-size: 11px;
+}
+
+#attachmentChip {
+    background-color: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+}
+
+/* Strategy & Model Dropdowns */
+QComboBox {
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    padding: 4px 10px;
+    color: #0f172a;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+QComboBox:hover {
+    border-color: #94a3b8;
+    background-color: #f8fafc;
+}
+
+QComboBox:disabled {
+    color: #94a3b8;
+    background-color: #f1f5f9;
+    border-color: #e2e8f0;
+}
+
+QComboBox::drop-down {
+    border: none;
+    padding-right: 6px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    selection-background-color: #eff6ff;
+    selection-color: #1e40af;
+    color: #0f172a;
+    padding: 4px;
+    outline: none;
+}
+
+/* Buttons and Inputs in Dialogs */
+QPushButton {
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    color: #0f172a;
+    padding: 6px 14px;
+    font-size: 12.5px;
+    font-weight: 500;
+}
+
+QPushButton:hover {
+    background-color: #f1f5f9;
+    border-color: #94a3b8;
+}
+
+QPushButton:pressed {
+    background-color: #e2e8f0;
+}
+
+QPushButton:disabled {
+    background-color: #f1f5f9;
+    color: #94a3b8;
+    border-color: #e2e8f0;
+}
+
+QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox {
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    padding: 6px 10px;
+    color: #0f172a;
+    font-size: 12.5px;
+}
+
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+    border-color: #2563eb;
+    background-color: #ffffff;
+}
+
+/* Checkbox */
+QCheckBox {
+    color: #0f172a;
+    font-size: 13px;
+    spacing: 8px;
+}
+
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    background-color: #ffffff;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #2563eb;
+    border-color: #2563eb;
+}
+
+/* Menus */
+QMenu {
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 4px;
+}
+
+QMenu::item {
+    background-color: transparent;
+    color: #0f172a;
+    padding: 6px 14px;
+    border-radius: 5px;
+    font-size: 12.5px;
+}
+
+QMenu::item:selected {
+    background-color: #eff6ff;
+    color: #1e40af;
+}
+
+/* Tab Widget */
+QTabWidget::pane {
+    border: 1px solid #e2e8f0;
+    background-color: #ffffff;
+    border-radius: 8px;
+}
+
+QTabBar::tab {
+    background-color: #f1f5f9;
+    color: #64748b;
+    padding: 8px 16px;
+    border: 1px solid #e2e8f0;
+    border-bottom: none;
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+    margin-right: 3px;
+    font-weight: 500;
+}
+
+QTabBar::tab:selected {
+    background-color: #ffffff;
+    color: #0f172a;
+    font-weight: 600;
+    border-bottom: 2px solid #2563eb;
+}
+
+/* Tables and Trees */
+QTableWidget, QTreeWidget, QListWidget {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    color: #0f172a;
+    gridline-color: #f1f5f9;
+    outline: none;
+}
+
+QTableWidget::item, QTreeWidget::item {
+    padding: 6px 8px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+QTableWidget::item:selected, QTreeWidget::item:selected {
+    background-color: #eff6ff;
+    color: #1e40af;
+}
+
+QTableWidget QPushButton {
+    background-color: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    color: #334155;
+    padding: 3px 10px;
+    font-size: 11.5px;
+    font-weight: 500;
+    min-height: 22px;
+}
+
+QTableWidget QPushButton:hover {
+    background-color: #e2e8f0;
+    color: #0f172a;
+    border-color: #94a3b8;
+}
+
+QHeaderView::section {
+    background-color: #f8fafc;
+    color: #475569;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 6px 8px;
+    border: none;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+/* Splitter */
+QSplitter::handle {
+    background-color: #e2e8f0;
+}
+
+QSplitter::handle:hover {
+    background-color: #cbd5e1;
+}
+
+/* Status Bar */
+QStatusBar {
+    background-color: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    color: #64748b;
+    font-size: 11px;
+    padding: 2px 8px;
+}
+
+/* Scrollbars */
+QScrollBar:vertical {
+    border: none;
+    background: transparent;
+    width: 6px;
+    margin: 0px;
+}
+
+QScrollBar::handle:vertical {
+    background: rgba(0, 0, 0, 0.16);
+    min-height: 24px;
+    border-radius: 3px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: rgba(0, 0, 0, 0.28);
+}
+
+/* Dynamic Component Overrides */
+#toolbarLabel {
+    font-weight: 500;
+    color: #475569;
+    font-size: 12px;
+}
+
+#toolsWorkspaceLabel {
+    font-weight: 600;
+    color: #0f172a;
+    font-size: 12px;
+}
+
+#toolToggleBtn, #skillToggleBtn {
+    background-color: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 11.5px;
+    font-weight: 500;
+}
+
+#toolToggleBtn:hover, #skillToggleBtn:hover {
+    background-color: #e2e8f0;
+    color: #334155;
+}
+
+#toolToggleBtn[active="true"], #skillToggleBtn[active="true"] {
+    background-color: #ecfdf5;
+    color: #059669;
+    border: 1px solid #a7f3d0;
+}
+
+#toolToggleBtn[active="true"]:hover, #skillToggleBtn[active="true"]:hover {
+    background-color: #d1fae5;
+}
+
+#emptyPlaceholderLabel {
+    color: #64748b;
+    font-size: 13px;
+    padding: 30px;
+    text-align: center;
 }
 """
 
 
-def apply_theme(widget: Any, theme: str = "dark") -> None:
+def apply_theme(target: Any, theme: str = "dark") -> None:
     """Apply application theme stylesheet to a QWidget or QApplication."""
-    if theme == "dark":
-        widget.setStyleSheet(DARK_THEME_QSS)
-    else:
-        # Default fallback
-        widget.setStyleSheet(DARK_THEME_QSS)
+    qss = LIGHT_THEME_QSS if theme == "light" else DARK_THEME_QSS
+    if hasattr(target, "setStyleSheet"):
+        target.setStyleSheet(qss)
 
+    app = QApplication.instance()
+    if app:
+        if isinstance(target, QApplication) or target == app:
+            app.setStyleSheet(qss)
+        for top in app.topLevelWidgets():
+            if hasattr(top, "setStyleSheet"):
+                top.setStyleSheet(qss)
+            if hasattr(top, "style") and top.style():
+                top.style().unpolish(top)
+                top.style().polish(top)
+            top.update()

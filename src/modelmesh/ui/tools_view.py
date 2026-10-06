@@ -88,6 +88,7 @@ class ToolCard(QFrame):
 
         # Toggle Button
         self.toggle_btn = QPushButton("Active" if self.enabled else "Disabled")
+        self.toggle_btn.setObjectName("toolToggleBtn")
         self.toggle_btn.setCheckable(True)
         self.toggle_btn.setChecked(self.enabled)
         self.toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -105,20 +106,12 @@ class ToolCard(QFrame):
         layout.addWidget(actions_widget)
 
     def _update_toggle_style(self) -> None:
-        if self.toggle_btn.isChecked():
-            self.toggle_btn.setText("Active")
-            self.toggle_btn.setStyleSheet(
-                "QPushButton { background-color: rgba(16, 185, 129, 0.15); color: #34d399; "
-                "border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 6px; padding: 4px 10px; font-size: 11.5px; font-weight: 500; } "
-                "QPushButton:hover { background-color: rgba(16, 185, 129, 0.25); }"
-            )
-        else:
-            self.toggle_btn.setText("Disabled")
-            self.toggle_btn.setStyleSheet(
-                "QPushButton { background-color: rgba(255, 255, 255, 0.04); color: #71717a; "
-                "border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 4px 10px; font-size: 11.5px; font-weight: 500; } "
-                "QPushButton:hover { background-color: rgba(255, 255, 255, 0.08); color: #a1a1aa; }"
-            )
+        is_active = self.toggle_btn.isChecked()
+        self.toggle_btn.setText("Active" if is_active else "Disabled")
+        self.toggle_btn.setProperty("active", "true" if is_active else "false")
+        if self.toggle_btn.style():
+            self.toggle_btn.style().unpolish(self.toggle_btn)
+            self.toggle_btn.style().polish(self.toggle_btn)
 
     def _on_toggle(self) -> None:
         is_active = self.toggle_btn.isChecked()
@@ -165,6 +158,7 @@ class ToolsView(QWidget):
 
     def _init_ui(self) -> None:
         self.setObjectName("toolsView")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(36, 32, 36, 24)
         main_layout.setSpacing(18)
@@ -199,7 +193,7 @@ class ToolsView(QWidget):
         ws_layout.setSpacing(10)
 
         ws_label = QLabel("Workspace Directory:")
-        ws_label.setStyleSheet("font-weight: 600; color: #f4f4f6; font-size: 12px;")
+        ws_label.setObjectName("toolsWorkspaceLabel")
         ws_layout.addWidget(ws_label)
 
         self.ws_input = QLineEdit(self.registry.workspace_folder)

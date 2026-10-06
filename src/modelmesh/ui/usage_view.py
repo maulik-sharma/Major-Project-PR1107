@@ -26,6 +26,7 @@ class UsageDialog(QDialog):
 
     def __init__(self, storage: Storage, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWindowTitle("ModelMesh Usage & Analytics Dashboard")
         self.resize(780, 480)
 
@@ -37,10 +38,7 @@ class UsageDialog(QDialog):
 
         # Header Summary Cards
         summary_card = QWidget()
-        summary_card.setStyleSheet(
-            "background-color: #18181b; border: 1px solid rgba(255, 255, 255, 0.08); "
-            "border-radius: 10px; padding: 14px;"
-        )
+        summary_card.setObjectName("usageSummaryCard")
         summary_layout = QHBoxLayout(summary_card)
 
         self.reqs_label = QLabel("<strong>Requests:</strong> 0")

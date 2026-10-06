@@ -39,7 +39,6 @@ from modelmesh.ui.chat_view import ChatView
 from modelmesh.ui.composer import ComposerWidget
 from modelmesh.ui.main_window import MainWindow
 from modelmesh.ui.parameters_dialog import ParametersDialog
-from modelmesh.ui.router_lab import RouterLabDialog
 from modelmesh.ui.settings.settings_dialog import SettingsDialog
 from modelmesh.ui.sidebar import SidebarWidget
 from modelmesh.ui.usage_view import UsageDialog
@@ -150,9 +149,25 @@ def test_chat_worker_execution(qapp, tmp_path: Path) -> None:
 def test_settings_dialog(qapp) -> None:
     reg = create_test_registry()
     dlg = SettingsDialog(registry=reg)
-    assert dlg.tabs.count() == 5
+    assert dlg.tabs.count() == 4  # Providers, Endpoints, Routing, Appearance
     assert dlg.providers_tab.provider_list.count() >= 1
-    assert dlg.models_tab.tree.topLevelItemCount() >= 1
+    assert dlg.models_tab.table.rowCount() >= 1
+    assert dlg.models_tab.table.columnCount() == 8
+
+    # Test appearance theme change
+    theme_events = []
+    dlg.theme_changed.connect(theme_events.append)
+    dlg.appearance_tab.theme_combo.setCurrentText("Light")
+    assert "light" in theme_events
+    dlg.appearance_tab.theme_combo.setCurrentText("Dark (Default)")
+    assert "dark" in theme_events
+
+    # Test flat endpoints table content
+    first_ep_id = dlg.models_tab.table.item(0, 0).text()
+    assert "@" in first_ep_id
+    assert dlg.models_tab.table.item(0, 4).text().startswith("$")  # price in
+    assert dlg.models_tab.table.item(0, 5).text().startswith("$")  # price out
+    assert dlg.models_tab.table.item(0, 7).text() in ("Active", "Disabled")
 
 
 def test_usage_dialog(qapp, tmp_path: Path) -> None:
@@ -161,12 +176,6 @@ def test_usage_dialog(qapp, tmp_path: Path) -> None:
     assert dlg.table.columnCount() == 7
 
 
-def test_router_lab_dialog(qapp) -> None:
-    reg = create_test_registry()
-    router = Router(registry=reg)
-    dlg = RouterLabDialog(registry=reg, router=router)
-    dlg._run_dry_run()
-    assert dlg.table.rowCount() > 0
 
 
 def test_main_window_lifecycle(qapp, tmp_path: Path) -> None:
@@ -663,6 +672,113 @@ def test_tools_sidebar_navigation_in_main_window(qapp, tmp_path: Path) -> None:
     win.sidebar._on_new_chat_clicked()
     assert win.main_stack.currentIndex() == 0
     assert win.sidebar._active_view == "chat"
+
+
+def test_endpoints_tab_operations(qapp) -> None:
+    from modelmesh.ui.settings.models_tab import AddEndpointDialog, EditEndpointDialog, ModelsTab
+    from modelmesh.core.types import EndpointConfig
+
+    reg = create_test_registry()
+    tab = ModelsTab(registry=reg)
+    initial_rows = tab.table.rowCount()
+    assert initial_rows >= 1
+
+    # 1. Test Toggle Active
+    tab.table.setCurrentCell(0, 0)
+    tab._on_toggle_active()
+    # Check that status changed
+    status_text = tab.table.item(0, 7).text()
+    assert status_text in ("Active", "Disabled")
+
+    # 2. Test Edit Endpoint Dialog
+    data = tab._get_selected_data()
+    assert data is not None
+    model = reg.get_model(data["model_id"])
+    endpoint = next(e for e in model.endpoints if e.id == data["ep_id"])
+    dlg = EditEndpointDialog(endpoint=endpoint)
+    dlg.price_in.setValue(3.1415)
+    dlg.price_out.setValue(9.8765)
+    dlg.update_endpoint()
+    tab.refresh()
+
+    assert "$3.1415" in tab.table.item(0, 4).text()
+    assert "$9.8765" in tab.table.item(0, 5).text()
+
+    # 3. Test Add Endpoint Dialog with new model creation
+    add_dlg = AddEndpointDialog(
+        providers=["mock-openai"],
+        existing_models=reg.models(),
+    )
+    add_dlg.model_combo.setCurrentIndex(add_dlg.model_combo.count() - 1)  # Create New Logical Model
+    add_dlg.new_model_id_input.setText("custom-agent")
+    add_dlg.new_model_name_input.setText("Custom Agent Model")
+    add_dlg.api_model_input.setText("custom-agent-v1")
+    add_dlg.price_in.setValue(1.0)
+    add_dlg.price_out.setValue(2.0)
+
+    res = add_dlg.get_result()
+    assert res["new_model"] is not None
+    assert res["endpoint"].id == "custom-agent@mock-openai"
+    reg.add_model(res["new_model"])
+    reg.add_endpoint(res["model_id"], res["endpoint"])
+    tab.refresh()
+    assert tab.table.rowCount() == initial_rows + 1
+
+
+def test_appearance_theme_switching_deep(qapp, tmp_path: Path) -> None:
+    from modelmesh.core.tools.builtin import create_builtin_registry
+    from modelmesh.ui.theme import LIGHT_THEME_QSS, DARK_THEME_QSS, apply_theme
+
+    reg = create_test_registry()
+    storage = Storage(tmp_path / "test_theme.db")
+    router = Router(registry=reg)
+    tool_reg = create_builtin_registry(workspace_folder=str(tmp_path))
+    engine = ChatEngine(registry=reg, router=router, storage=storage, tool_registry=tool_reg)
+
+    win = MainWindow(
+        registry=reg,
+        router=router,
+        engine=engine,
+        storage=storage,
+    )
+
+    # 1. Apply Light Theme
+    win.apply_theme_mode("light")
+    assert win._current_theme == "light"
+    assert win.chat_view._theme_name == "light"
+    assert win.sidebar.testAttribute(Qt.WidgetAttribute.WA_StyledBackground)
+    assert win.composer.testAttribute(Qt.WidgetAttribute.WA_StyledBackground)
+    assert "#chatContainer" in LIGHT_THEME_QSS
+    assert "#sidebar" in LIGHT_THEME_QSS
+    assert "#composerWidget" in LIGHT_THEME_QSS
+    assert "#inputCard" in LIGHT_THEME_QSS
+
+    # 2. Test Settings Dialog theme emission
+    dlg = SettingsDialog(registry=reg, parent=win)
+    theme_emitted = []
+    dlg.theme_changed.connect(theme_emitted.append)
+    dlg.appearance_tab.theme_combo.setCurrentText("Light")
+    assert "light" in theme_emitted
+
+    # 3. Apply Dark Theme
+    win.apply_theme_mode("dark")
+    assert win._current_theme == "dark"
+    assert win.chat_view._theme_name == "dark"
+
+
+def test_light_mode_chat_css_variables() -> None:
+    css_path = Path(__file__).parent.parent / "src" / "modelmesh" / "ui" / "web" / "chat.css"
+    css_content = css_path.read_text(encoding="utf-8")
+
+    assert "body.light-theme" in css_content
+    assert "--bg-primary: #ffffff;" in css_content
+    assert "--text-primary: #0f172a;" in css_content
+    assert "--bg-user-msg: #eff6ff;" in css_content
+    assert ".user-bubble" in css_content
+    assert ".assistant-content" in css_content
+    assert "body.light-theme .user-bubble" in css_content
+
+
 
 
 

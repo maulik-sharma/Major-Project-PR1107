@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from PyQt6.QtCore import Qt, pyqtSlot
-from PyQt6.QtGui import QAction, QIcon
+from PyQt6.QtGui import QAction, QColor, QIcon
 from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -40,8 +40,8 @@ from modelmesh.core.types import (
 from modelmesh.ui.chat_view import ChatView
 from modelmesh.ui.composer import ComposerWidget
 from modelmesh.ui.parameters_dialog import ParametersDialog
-from modelmesh.ui.router_lab import RouterLabDialog
 from modelmesh.ui.settings.settings_dialog import SettingsDialog
+from modelmesh.ui.settings.tools_tab import get_app_settings
 from modelmesh.ui.sidebar import SidebarWidget
 from modelmesh.ui.skills_view import SkillsView
 from modelmesh.ui.theme import apply_theme
@@ -85,7 +85,8 @@ class MainWindow(QMainWindow):
         self._load_initial_data()
 
     def _init_ui(self) -> None:
-        apply_theme(self, "dark")
+        self._current_theme = str(get_app_settings().value("appearance/theme", "dark"))
+        apply_theme(self, self._current_theme)
 
         # 1. Top Navigation Bar
         self.toolbar = QToolBar("Top Toolbar", self)
@@ -94,7 +95,7 @@ class MainWindow(QMainWindow):
 
         # Strategy & Model Selectors
         self.strategy_label = QLabel("Strategy")
-        self.strategy_label.setStyleSheet("font-weight: 500; color: #a1a1aa; font-size: 12px;")
+        self.strategy_label.setObjectName("toolbarLabel")
         self.toolbar.addWidget(self.strategy_label)
 
         self.strategy_combo = QComboBox()
@@ -106,7 +107,7 @@ class MainWindow(QMainWindow):
         self.toolbar.addSeparator()
 
         self.model_label = QLabel("Model")
-        self.model_label.setStyleSheet("font-weight: 500; color: #a1a1aa; font-size: 12px;")
+        self.model_label.setObjectName("toolbarLabel")
         self.toolbar.addWidget(self.model_label)
 
         self.model_combo = QComboBox()
@@ -148,7 +149,6 @@ class MainWindow(QMainWindow):
         self.sidebar.rename_conversation_requested.connect(self._on_rename_conversation)
         self.sidebar.settings_requested.connect(self._open_settings_dialog)
         self.sidebar.usage_requested.connect(self._open_usage_dialog)
-        self.sidebar.router_lab_requested.connect(self._open_router_lab_dialog)
         main_splitter.addWidget(self.sidebar)
 
         # Central Stacked Area (Chat View vs Skills View vs Tools View)
@@ -158,12 +158,14 @@ class MainWindow(QMainWindow):
         # Right Chat Area (Stack Index 0)
         chat_container = QWidget()
         chat_container.setObjectName("chatContainer")
+        chat_container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         chat_layout = QVBoxLayout(chat_container)
         chat_layout.setContentsMargins(0, 0, 0, 0)
         chat_layout.setSpacing(0)
 
         # Transcript Web View
         self.chat_view = ChatView(self)
+        self.chat_view.set_theme(self._current_theme)
         self.chat_view.regenerate_requested.connect(self._on_regenerate)
         self.chat_view.suggestion_clicked.connect(self._on_suggestion_clicked)
         chat_layout.addWidget(self.chat_view, stretch=1)
@@ -599,7 +601,17 @@ class MainWindow(QMainWindow):
         if tab_index > 0:
             dlg.tabs.setCurrentIndex(tab_index)
         dlg.settings_updated.connect(self._on_settings_updated)
+        dlg.theme_changed.connect(self.apply_theme_mode)
         dlg.exec()
+
+    def apply_theme_mode(self, theme: str) -> None:
+        """Apply light or dark theme dynamically across the entire window and chat view."""
+        self._current_theme = theme
+        apply_theme(self, theme)
+        self.chat_view.set_theme(theme)
+        self.chat_view.page().setBackgroundColor(
+            QColor("#ffffff" if theme == "light" else "#141417")
+        )
 
     def _on_settings_updated(self) -> None:
         self._populate_model_combo()
@@ -608,9 +620,5 @@ class MainWindow(QMainWindow):
 
     def _open_usage_dialog(self) -> None:
         dlg = UsageDialog(storage=self.storage, parent=self)
-        dlg.exec()
-
-    def _open_router_lab_dialog(self) -> None:
-        dlg = RouterLabDialog(registry=self.registry, router=self.router, parent=self)
         dlg.exec()
 

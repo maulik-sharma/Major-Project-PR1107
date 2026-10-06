@@ -1,10 +1,10 @@
-"""Providers management tab with connection testing, model fetching, and key management."""
+"""Providers management tab with connection testing, model discovery, and key management."""
 
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -17,7 +17,6 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
-    QScrollArea,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -75,6 +74,44 @@ PRESETS: Dict[str, Dict[str, Any]] = {
 }
 
 
+class ProviderTestWorker(QThread):
+    """Background thread for non-blocking provider connectivity tests."""
+
+    finished_success = pyqtSignal(str)
+    finished_error = pyqtSignal(str)
+
+    def __init__(self, provider: ProviderConfig) -> None:
+        super().__init__()
+        self.provider = provider
+
+    def run(self) -> None:
+        try:
+            adapter = get_adapter(self.provider.protocol)
+            adapter.test_connection(self.provider)
+            self.finished_success.emit(self.provider.id)
+        except Exception as exc:
+            self.finished_error.emit(str(exc))
+
+
+class ProviderListModelsWorker(QThread):
+    """Background thread for non-blocking remote model discovery."""
+
+    finished_success = pyqtSignal(str, list)
+    finished_error = pyqtSignal(str, str)
+
+    def __init__(self, provider: ProviderConfig) -> None:
+        super().__init__()
+        self.provider = provider
+
+    def run(self) -> None:
+        try:
+            adapter = get_adapter(self.provider.protocol)
+            models = adapter.list_models(self.provider)
+            self.finished_success.emit(self.provider.id, models)
+        except Exception as exc:
+            self.finished_error.emit(self.provider.id, str(exc))
+
+
 class AddProviderDialog(QDialog):
     """Modal dialog for adding a new provider from presets or custom URL."""
 
@@ -84,8 +121,8 @@ class AddProviderDialog(QDialog):
         self.setFixedWidth(420)
 
         layout = QVBoxLayout(self)
-
         form = QFormLayout()
+
         self.preset_combo = QComboBox()
         for name in PRESETS.keys():
             self.preset_combo.addItem(name)
@@ -125,9 +162,7 @@ class AddProviderDialog(QDialog):
         self.auth_input.setText(", ".join(data.get("auth_env", [])))
 
     def get_provider_config(self) -> ProviderConfig:
-        auth_vars = [
-            v.strip() for v in self.auth_input.text().split(",") if v.strip()
-        ]
+        auth_vars = [v.strip() for v in self.auth_input.text().split(",") if v.strip()]
         return ProviderConfig(
             id=self.id_input.text().strip(),
             protocol=self.protocol_combo.currentText(),
@@ -137,16 +172,19 @@ class AddProviderDialog(QDialog):
 
 
 class ProvidersTab(QWidget):
-    """Tab for managing API providers, keys, test connectivity, and model discovery."""
+    """Tab for managing API providers, credentials, connectivity, and model discovery."""
 
     config_changed = pyqtSignal()
 
     def __init__(self, registry: ModelRegistry, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.registry = registry
+        self._test_worker: Optional[ProviderTestWorker] = None
+        self._fetch_worker: Optional[ProviderListModelsWorker] = None
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setContentsMargins(14, 14, 14, 14)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
@@ -174,7 +212,7 @@ class ProvidersTab(QWidget):
         # 2. Right Details
         self.details_widget = QWidget()
         self.details_layout = QVBoxLayout(self.details_widget)
-        self.details_layout.setContentsMargins(12, 0, 0, 0)
+        self.details_layout.setContentsMargins(14, 0, 0, 0)
 
         self.form_layout = QFormLayout()
         self.id_label = QLabel("-")
@@ -205,7 +243,7 @@ class ProvidersTab(QWidget):
 
         self.details_layout.addStretch()
         splitter.addWidget(self.details_widget)
-        splitter.setSizes([200, 450])
+        splitter.setSizes([220, 480])
 
         layout.addWidget(splitter)
         self.refresh()
@@ -287,20 +325,31 @@ class ProvidersTab(QWidget):
         if not prov:
             return
 
-        try:
-            adapter = get_adapter(prov.protocol)
-            adapter.test_connection(prov)
-            QMessageBox.information(
-                self,
-                "Connection Successful",
-                f"Successfully connected and authenticated with '{prov.id}'!",
-            )
-        except Exception as exc:
-            QMessageBox.warning(
-                self,
-                "Connection Failed",
-                f"Failed to connect to '{prov.id}':\n\n{exc}",
-            )
+        self.test_btn.setEnabled(False)
+        self.test_btn.setText("Testing...")
+
+        self._test_worker = ProviderTestWorker(prov)
+        self._test_worker.finished_success.connect(self._on_test_success)
+        self._test_worker.finished_error.connect(self._on_test_error)
+        self._test_worker.start()
+
+    def _on_test_success(self, prov_id: str) -> None:
+        self.test_btn.setEnabled(True)
+        self.test_btn.setText("Test Connection")
+        QMessageBox.information(
+            self,
+            "Connection Successful",
+            f"Successfully connected and authenticated with '{prov_id}'!",
+        )
+
+    def _on_test_error(self, err_msg: str) -> None:
+        self.test_btn.setEnabled(True)
+        self.test_btn.setText("Test Connection")
+        QMessageBox.warning(
+            self,
+            "Connection Failed",
+            f"Connection check failed:\n\n{err_msg}",
+        )
 
     def _on_fetch_models(self) -> None:
         curr = self.provider_list.currentItem()
@@ -311,28 +360,39 @@ class ProvidersTab(QWidget):
         if not prov:
             return
 
-        try:
-            adapter = get_adapter(prov.protocol)
-            models = adapter.list_models(prov)
-            if not models:
-                QMessageBox.information(self, "Models", "No models returned by provider.")
-                return
+        self.fetch_btn.setEnabled(False)
+        self.fetch_btn.setText("Fetching...")
 
-            preview = "\n".join([f"• {m}" for m in models[:25]])
-            if len(models) > 25:
-                preview += f"\n... and {len(models) - 25} more"
+        self._fetch_worker = ProviderListModelsWorker(prov)
+        self._fetch_worker.finished_success.connect(self._on_fetch_success)
+        self._fetch_worker.finished_error.connect(self._on_fetch_error)
+        self._fetch_worker.start()
 
-            QMessageBox.information(
-                self,
-                f"Discovered {len(models)} Models on {prov.id}",
-                f"Discovered active models:\n\n{preview}",
-            )
-        except Exception as exc:
-            QMessageBox.warning(
-                self,
-                "Fetch Models Error",
-                f"Could not list models from '{prov.id}':\n\n{exc}",
-            )
+    def _on_fetch_success(self, prov_id: str, models: list) -> None:
+        self.fetch_btn.setEnabled(True)
+        self.fetch_btn.setText("Fetch Models")
+        if not models:
+            QMessageBox.information(self, "Models", f"No models returned by {prov_id}.")
+            return
+
+        preview = "\n".join([f"• {m}" for m in models[:25]])
+        if len(models) > 25:
+            preview += f"\n... and {len(models) - 25} more"
+
+        QMessageBox.information(
+            self,
+            f"Discovered {len(models)} Models on {prov_id}",
+            f"Active models:\n\n{preview}",
+        )
+
+    def _on_fetch_error(self, prov_id: str, err_msg: str) -> None:
+        self.fetch_btn.setEnabled(True)
+        self.fetch_btn.setText("Fetch Models")
+        QMessageBox.warning(
+            self,
+            "Fetch Models Error",
+            f"Could not list models from '{prov_id}':\n\n{err_msg}",
+        )
 
     def _on_add_provider(self) -> None:
         dlg = AddProviderDialog(self)
@@ -354,7 +414,6 @@ class ProvidersTab(QWidget):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
-            # Remove provider from registry
             self.registry._providers.pop(prov_id, None)
             self.refresh()
             self.config_changed.emit()

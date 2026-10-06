@@ -1,10 +1,10 @@
-"""Settings modal dialog assembling Providers, Models, Routing, Tools, and Appearance tabs."""
+"""Settings modal dialog assembling Providers, Endpoints, Routing, and Appearance tabs."""
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -18,13 +18,13 @@ from modelmesh.ui.settings.appearance_tab import AppearanceTab
 from modelmesh.ui.settings.models_tab import ModelsTab
 from modelmesh.ui.settings.providers_tab import ProvidersTab
 from modelmesh.ui.settings.routing_tab import RoutingTab
-from modelmesh.ui.settings.tools_tab import ToolsTab
 
 
 class SettingsDialog(QDialog):
     """Main Settings modal dialog for ModelMesh."""
 
     settings_updated = pyqtSignal()
+    theme_changed = pyqtSignal(str)
 
     def __init__(
         self,
@@ -34,38 +34,36 @@ class SettingsDialog(QDialog):
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWindowTitle("ModelMesh Settings")
-        self.resize(750, 520)
+        self.resize(780, 530)
 
         self.registry = registry
-        self.tool_registry = tool_registry
-        self.skill_loader = skill_loader
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
 
         self.tabs = QTabWidget()
 
+        # 1. Providers Tab
         self.providers_tab = ProvidersTab(registry=self.registry, parent=self)
         self.providers_tab.config_changed.connect(self._on_tab_config_changed)
         self.tabs.addTab(self.providers_tab, "Providers")
 
+        # 2. Endpoints Tab
         self.models_tab = ModelsTab(registry=self.registry, parent=self)
         self.models_tab.config_changed.connect(self._on_tab_config_changed)
-        self.tabs.addTab(self.models_tab, "Models & Endpoints")
+        self.tabs.addTab(self.models_tab, "Endpoints")
 
+        # 3. Routing Tab
         self.routing_tab = RoutingTab(parent=self)
+        self.routing_tab.config_changed.connect(self._on_tab_config_changed)
         self.tabs.addTab(self.routing_tab, "Routing")
 
-        self.tools_tab = ToolsTab(
-            tool_registry=self.tool_registry,
-            skill_loader=self.skill_loader,
-            parent=self,
-        )
-        self.tools_tab.config_changed.connect(self._on_tab_config_changed)
-        self.tabs.addTab(self.tools_tab, "Tools & Skills")
-
+        # 4. Appearance Tab
         self.appearance_tab = AppearanceTab(parent=self)
+        self.appearance_tab.theme_changed.connect(self.theme_changed)
         self.tabs.addTab(self.appearance_tab, "Appearance")
 
         layout.addWidget(self.tabs)

@@ -35,6 +35,7 @@ class ToolDetailDialog(QDialog):
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.tool_spec = tool_spec
         self.tool_registry = tool_registry
         self.setWindowTitle(f"Tool: {tool_spec.name}")
@@ -55,7 +56,7 @@ class ToolDetailDialog(QDialog):
 
         title_row = QHBoxLayout()
         name_lbl = QLabel(self.tool_spec.name)
-        name_lbl.setStyleSheet("font-size: 16px; font-weight: bold; color: #f4f4f6;")
+        name_lbl.setStyleSheet("font-size: 16px; font-weight: bold;")
         title_row.addWidget(name_lbl)
 
         category = self.tool_registry.get_category(self.tool_spec.name)
@@ -67,20 +68,14 @@ class ToolDetailDialog(QDialog):
 
         is_enabled = self.tool_registry.is_tool_enabled(self.tool_spec.name)
         status_badge = QLabel("Active" if is_enabled else "Disabled")
-        status_badge.setObjectName("toolStatusBadge")
-        status_badge.setStyleSheet(
-            "background-color: rgba(16, 185, 129, 0.15); color: #34d399; "
-            "border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 4px; padding: 2px 8px; font-size: 11px;"
-            if is_enabled else
-            "background-color: rgba(255, 255, 255, 0.05); color: #71717a; "
-            "border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 4px; padding: 2px 8px; font-size: 11px;"
-        )
+        status_badge.setObjectName("toolToggleBtn")
+        status_badge.setProperty("active", "true" if is_enabled else "false")
         title_row.addWidget(status_badge)
 
         header_layout.addLayout(title_row)
 
         desc_lbl = QLabel(self.tool_spec.description)
-        desc_lbl.setStyleSheet("color: #a1a1aa; font-size: 12.5px; line-height: 1.4;")
+        desc_lbl.setObjectName("toolCardDesc")
         desc_lbl.setWordWrap(True)
         header_layout.addWidget(desc_lbl)
 

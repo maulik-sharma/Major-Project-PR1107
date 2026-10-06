@@ -58,7 +58,8 @@ def main() -> None:
     app = QApplication(sys_args)
     app.setApplicationName("ModelMesh")
     app.setOrganizationName("ModelMesh")
-    apply_theme(app, "dark")
+    saved_theme = str(get_app_settings().value("appearance/theme", "dark"))
+    apply_theme(app, saved_theme)
 
     # Initialize Core Services
     registry = load_default_registry()
