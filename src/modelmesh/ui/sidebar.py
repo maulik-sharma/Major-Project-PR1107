@@ -22,11 +22,12 @@ from PyQt6.QtWidgets import (
 
 
 class SidebarWidget(QWidget):
-    """Left sidebar with conversation history list, skills view navigation, and settings."""
+    """Left sidebar with conversation history list, skills & tools navigation, and settings."""
 
     conversation_selected = pyqtSignal(str)
     new_chat_requested = pyqtSignal()
     skills_requested = pyqtSignal()
+    tools_requested = pyqtSignal()
     delete_conversation_requested = pyqtSignal(str)
     rename_conversation_requested = pyqtSignal(str, str)
     settings_requested = pyqtSignal()
@@ -45,7 +46,7 @@ class SidebarWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # 1. Header (Brand + New Chat + Skills Nav)
+        # 1. Header (Brand + New Chat + Skills & Tools Nav)
         header_widget = QWidget()
         header_widget.setObjectName("sidebarHeader")
         header_layout = QVBoxLayout(header_widget)
@@ -69,12 +70,23 @@ class SidebarWidget(QWidget):
         shortcut_new = QShortcut(QKeySequence("Ctrl+N"), self)
         shortcut_new.activated.connect(self._on_new_chat_clicked)
 
-        # Skills Navigation Button
+        # Navigation Buttons (Skills & Tools)
+        nav_row = QHBoxLayout()
+        nav_row.setSpacing(6)
+
         self.skills_nav_btn = QPushButton("Skills")
         self.skills_nav_btn.setObjectName("sidebarSkillsBtn")
         self.skills_nav_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.skills_nav_btn.clicked.connect(self._on_skills_clicked)
-        header_layout.addWidget(self.skills_nav_btn)
+        nav_row.addWidget(self.skills_nav_btn)
+
+        self.tools_nav_btn = QPushButton("Tools")
+        self.tools_nav_btn.setObjectName("sidebarToolsBtn")
+        self.tools_nav_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.tools_nav_btn.clicked.connect(self._on_tools_clicked)
+        nav_row.addWidget(self.tools_nav_btn)
+
+        header_layout.addLayout(nav_row)
 
         # Search box
         self.search_box = QLineEdit()
@@ -129,19 +141,25 @@ class SidebarWidget(QWidget):
         layout.addWidget(footer_widget)
 
     def set_active_view(self, view_name: str) -> None:
-        """Update active navigation highlight between 'chat' and 'skills'."""
+        """Update active navigation highlight between 'chat', 'skills', and 'tools'."""
         self._active_view = view_name
-        if view_name == "skills":
-            self.skills_nav_btn.setProperty("active", "true")
+        self.skills_nav_btn.setProperty("active", "true" if view_name == "skills" else "false")
+        self.tools_nav_btn.setProperty("active", "true" if view_name == "tools" else "false")
+        if view_name in ("skills", "tools"):
             self.conv_list.clearSelection()
-        else:
-            self.skills_nav_btn.setProperty("active", "false")
+
         self.skills_nav_btn.style().unpolish(self.skills_nav_btn)
         self.skills_nav_btn.style().polish(self.skills_nav_btn)
+        self.tools_nav_btn.style().unpolish(self.tools_nav_btn)
+        self.tools_nav_btn.style().polish(self.tools_nav_btn)
 
     def _on_skills_clicked(self) -> None:
         self.set_active_view("skills")
         self.skills_requested.emit()
+
+    def _on_tools_clicked(self) -> None:
+        self.set_active_view("tools")
+        self.tools_requested.emit()
 
     def _on_new_chat_clicked(self) -> None:
         self.set_active_view("chat")

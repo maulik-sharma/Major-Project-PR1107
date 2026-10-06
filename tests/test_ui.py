@@ -568,5 +568,100 @@ def test_skill_detail_dialog(qapp, tmp_path: Path) -> None:
     assert "Updated endpoints content" in (docs_dir / "endpoints.md").read_text(encoding="utf-8")
 
 
+def test_tools_view_and_cards(qapp, tmp_path: Path) -> None:
+    from modelmesh.core.tools.builtin import create_builtin_registry
+    from modelmesh.ui.tools_view import ToolsView, ToolCard
+
+    tool_reg = create_builtin_registry(workspace_folder=str(tmp_path))
+    reg = create_test_registry()
+    storage = Storage(tmp_path / "test_tv.db")
+    router = Router(registry=reg)
+    engine = ChatEngine(registry=reg, router=router, storage=storage, tool_registry=tool_reg)
+
+    view = ToolsView(engine=engine)
+    assert view.cards_layout.count() >= 8  # 8 built-in tools
+
+    # Test toggling a tool
+    cards = [view.cards_layout.itemAt(i).widget() for i in range(view.cards_layout.count()) if isinstance(view.cards_layout.itemAt(i).widget(), ToolCard)]
+    web_card = next(c for c in cards if c.spec.name == "web_search")
+    assert web_card.enabled is True
+
+    web_card.toggle_btn.click()
+    assert tool_reg.is_tool_enabled("web_search") is False
+
+    # Test filter by category pill (Web & Search)
+    web_pill = next(b for b in view.pill_group.buttons() if b.text() == "Web & Search")
+    web_pill.click()
+    active_cards = [view.cards_layout.itemAt(i).widget() for i in range(view.cards_layout.count()) if isinstance(view.cards_layout.itemAt(i).widget(), ToolCard)]
+    names = [c.spec.name for c in active_cards]
+    assert "web_search" in names
+    assert "fetch_url" in names
+    assert "calculator" not in names
+
+    # Test search filter
+    view.search_box.setText("calculator")
+    # Switch back to All
+    all_pill = next(b for b in view.pill_group.buttons() if b.text() == "All Tools")
+    all_pill.click()
+    calc_cards = [view.cards_layout.itemAt(i).widget() for i in range(view.cards_layout.count()) if isinstance(view.cards_layout.itemAt(i).widget(), ToolCard)]
+    assert len(calc_cards) == 1
+    assert calc_cards[0].spec.name == "calculator"
+
+
+def test_tool_detail_dialog_and_live_test(qapp, tmp_path: Path) -> None:
+    from modelmesh.core.tools.builtin import create_builtin_registry
+    from modelmesh.ui.tool_detail_dialog import ToolDetailDialog
+
+    tool_reg = create_builtin_registry(workspace_folder=str(tmp_path))
+    spec = tool_reg.get_spec("calculator")
+    assert spec is not None
+
+    dlg = ToolDetailDialog(tool_spec=spec, tool_registry=tool_reg)
+    assert dlg.tool_spec.name == "calculator"
+
+    # Execute test in dialog
+    dlg.args_edit.setPlainText('{"expression": "100 / 4 + 7"}')
+    dlg._on_run_test()
+
+    assert "32" in dlg.output_edit.toPlainText()
+    assert "Latency:" in dlg.exec_time_lbl.text()
+
+
+def test_tools_sidebar_navigation_in_main_window(qapp, tmp_path: Path) -> None:
+    from modelmesh.core.tools.builtin import create_builtin_registry
+
+    reg = create_test_registry()
+    storage = Storage(tmp_path / "test_main_tools.db")
+    router = Router(registry=reg)
+    tool_reg = create_builtin_registry(workspace_folder=str(tmp_path))
+    engine = ChatEngine(registry=reg, router=router, storage=storage, tool_registry=tool_reg)
+
+    win = MainWindow(
+        registry=reg,
+        router=router,
+        engine=engine,
+        storage=storage,
+    )
+
+    # Sidebar starts in chat view
+    assert win.main_stack.currentIndex() == 0
+
+    # Click Tools button in sidebar
+    win.sidebar.tools_nav_btn.click()
+    assert win.main_stack.currentIndex() == 2
+    assert win.sidebar._active_view == "tools"
+
+    # Click Skills button in sidebar
+    win.sidebar.skills_nav_btn.click()
+    assert win.main_stack.currentIndex() == 1
+    assert win.sidebar._active_view == "skills"
+
+    # Click New Chat in sidebar
+    win.sidebar._on_new_chat_clicked()
+    assert win.main_stack.currentIndex() == 0
+    assert win.sidebar._active_view == "chat"
+
+
+
 
 

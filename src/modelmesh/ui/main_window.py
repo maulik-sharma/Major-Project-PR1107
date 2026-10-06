@@ -45,6 +45,7 @@ from modelmesh.ui.settings.settings_dialog import SettingsDialog
 from modelmesh.ui.sidebar import SidebarWidget
 from modelmesh.ui.skills_view import SkillsView
 from modelmesh.ui.theme import apply_theme
+from modelmesh.ui.tools_view import ToolsView
 from modelmesh.ui.usage_view import UsageDialog
 from modelmesh.ui.workers import ChatWorker
 
@@ -142,6 +143,7 @@ class MainWindow(QMainWindow):
         self.sidebar.conversation_selected.connect(self._on_conversation_selected)
         self.sidebar.new_chat_requested.connect(self._on_new_chat)
         self.sidebar.skills_requested.connect(self._show_skills_view)
+        self.sidebar.tools_requested.connect(self._show_tools_view)
         self.sidebar.delete_conversation_requested.connect(self._on_delete_conversation)
         self.sidebar.rename_conversation_requested.connect(self._on_rename_conversation)
         self.sidebar.settings_requested.connect(self._open_settings_dialog)
@@ -149,7 +151,7 @@ class MainWindow(QMainWindow):
         self.sidebar.router_lab_requested.connect(self._open_router_lab_dialog)
         main_splitter.addWidget(self.sidebar)
 
-        # Central Stacked Area (Chat View vs Skills View)
+        # Central Stacked Area (Chat View vs Skills View vs Tools View)
         self.main_stack = QStackedWidget(self)
         self.main_stack.setObjectName("mainStack")
 
@@ -180,6 +182,12 @@ class MainWindow(QMainWindow):
         self.skills_view.skills_changed.connect(self._on_skills_changed)
         self.skills_view.back_to_chat_requested.connect(self._show_chat_view)
         self.main_stack.addWidget(self.skills_view)
+
+        # Dedicated Tools Workspace View (Stack Index 2)
+        self.tools_view = ToolsView(engine=self.engine, parent=self)
+        self.tools_view.tools_changed.connect(self._on_tools_changed)
+        self.tools_view.back_to_chat_requested.connect(self._show_chat_view)
+        self.main_stack.addWidget(self.tools_view)
 
         main_splitter.addWidget(self.main_stack)
         main_splitter.setSizes([260, 920])
@@ -236,6 +244,17 @@ class MainWindow(QMainWindow):
         self.sidebar.set_active_view("skills")
         self.skills_view.refresh_skills()
         self.status_bar.showMessage("Viewing Skills workspace.")
+
+    def _show_tools_view(self) -> None:
+        """Switch central view to the dedicated Tools workspace."""
+        self.main_stack.setCurrentIndex(2)
+        self.sidebar.set_active_view("tools")
+        self.tools_view.refresh_tools()
+        self.status_bar.showMessage("Viewing Tools workspace.")
+
+    def _on_tools_changed(self) -> None:
+        """Handle changes in tools configuration."""
+        self.status_bar.showMessage("Tools configuration updated.")
 
     def _show_chat_view(self) -> None:
         """Switch central view to the chat conversation view."""

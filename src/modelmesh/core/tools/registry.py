@@ -75,6 +75,22 @@ class ToolRegistry:
             if name not in self._disabled_tools
         ]
 
+    def list_all_specs(self) -> List[ToolSpec]:
+        """Return all registered ToolSpecs regardless of enabled state."""
+        return list(self._tools.values())
+
+    def get_category(self, name: str) -> str:
+        """Get the functional category for a tool."""
+        if name in ("web_search", "fetch_url"):
+            return "Web & Search"
+        elif name in ("read_text_file", "write_text_file", "list_directory", "search_in_files"):
+            return "Filesystem & Workspace"
+        elif name in ("calculator", "get_current_datetime"):
+            return "Math & Utilities"
+        elif name.startswith("load_skill") or name == "load_skill":
+            return "Skills"
+        return "Custom"
+
     def get_spec(self, name: str) -> Optional[ToolSpec]:
         """Get ToolSpec for a given tool name."""
         return self._tools.get(name)

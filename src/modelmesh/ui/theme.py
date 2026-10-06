@@ -82,7 +82,7 @@ QToolButton:checked {
     background-color: #1b1b1e;
 }
 
-#sidebarSkillsBtn {
+#sidebarSkillsBtn, #sidebarToolsBtn {
     background-color: transparent;
     color: #d4d4d8;
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -90,16 +90,16 @@ QToolButton:checked {
     padding: 7px 12px;
     font-weight: 500;
     font-size: 12.5px;
-    text-align: left;
+    text-align: center;
 }
 
-#sidebarSkillsBtn:hover {
+#sidebarSkillsBtn:hover, #sidebarToolsBtn:hover {
     background-color: rgba(255, 255, 255, 0.05);
     border-color: rgba(255, 255, 255, 0.15);
     color: #ffffff;
 }
 
-#sidebarSkillsBtn[active="true"] {
+#sidebarSkillsBtn[active="true"], #sidebarToolsBtn[active="true"] {
     background-color: rgba(255, 255, 255, 0.1);
     border-color: rgba(255, 255, 255, 0.22);
     color: #ffffff;
@@ -288,6 +288,183 @@ QToolButton:checked {
     color: #e4e4e7;
     font-size: 12.5px;
     padding: 8px;
+}
+
+#toolsView {
+    background-color: #141416;
+}
+
+#toolsHeaderTitle {
+    font-size: 24px;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: -0.4px;
+}
+
+#toolsHeaderSubtitle {
+    font-size: 13px;
+    color: #a1a1aa;
+    line-height: 1.4;
+}
+
+#toolsWorkspaceCard {
+    background-color: #18181c;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+}
+
+#toolsWorkspaceInput {
+    background-color: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 5px 10px;
+    color: #f4f4f6;
+    font-size: 12px;
+    font-family: 'JetBrains Mono', 'Menlo', monospace;
+}
+
+#toolsWorkspaceInput:focus {
+    border-color: #3b82f6;
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+#toolsBrowseBtn {
+    background-color: #27272a;
+    color: #f4f4f6;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+#toolsBrowseBtn:hover {
+    background-color: #3f3f46;
+    color: #ffffff;
+}
+
+.toolFilterPill {
+    background-color: rgba(255, 255, 255, 0.04);
+    color: #a1a1aa;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.toolFilterPill:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+}
+
+.toolFilterPill:checked {
+    background-color: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+    font-weight: 600;
+}
+
+#toolSearchBox {
+    background-color: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 7px;
+    padding: 6px 12px;
+    color: #f4f4f6;
+    font-size: 12px;
+}
+
+#toolSearchBox:focus {
+    border-color: #3b82f6;
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+#toolCard {
+    background-color: #18181c;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 9px;
+}
+
+#toolCard:hover {
+    border-color: rgba(255, 255, 255, 0.12);
+    background-color: #1d1d22;
+}
+
+#toolCardInitialBadge {
+    background-color: rgba(59, 130, 246, 0.12);
+    color: #60a5fa;
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+#toolCardTitle {
+    font-size: 14px;
+    font-weight: 600;
+    color: #ffffff;
+    font-family: 'JetBrains Mono', 'Menlo', monospace;
+}
+
+#toolCategoryBadge {
+    background-color: rgba(255, 255, 255, 0.07);
+    color: #d4d4d8;
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 10.5px;
+    font-weight: 500;
+}
+
+#toolParamBadge {
+    background-color: rgba(168, 85, 247, 0.12);
+    color: #c084fc;
+    border: 1px solid rgba(168, 85, 247, 0.25);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 10.5px;
+    font-family: 'JetBrains Mono', 'Menlo', monospace;
+}
+
+#toolCardDesc {
+    font-size: 12.5px;
+    color: #a1a1aa;
+    line-height: 1.35;
+}
+
+#toolCardActionBtn {
+    background-color: #27272a;
+    color: #f4f4f6;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+#toolCardActionBtn:hover {
+    background-color: #3f3f46;
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.22);
+}
+
+#toolDetailHeader {
+    background-color: #18181c;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+}
+
+#toolTestRunBtn {
+    background-color: #2563eb;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+#toolTestRunBtn:hover {
+    background-color: #1d4ed8;
 }
 
 #searchBox {
