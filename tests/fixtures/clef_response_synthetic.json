@@ -1,0 +1,90 @@
+{
+  "result": {
+    "model": "clef-flash",
+    "answers": {
+      "task": {
+        "type": "choice",
+        "choice": "coding",
+        "probabilities": {
+          "coding": 0.958,
+          "math_reasoning": 0.004,
+          "writing_creative": 0.005,
+          "summarization_extraction": 0.002,
+          "translation_language": 0.002,
+          "analysis_research": 0.015,
+          "agentic_tool_use": 0.011,
+          "chat_general": 0.003
+        },
+        "confidence": 0.91
+      },
+      "difficulty": {
+        "type": "score",
+        "score": 3.07,
+        "legend": {
+          "0": "0 trivial: Greeting, single-step lookup, minimal thinking required",
+          "1": "1 easy: Short explanation or direct text rewrite",
+          "2": "2 moderate: Standard multi-step reasoning, typical coding task",
+          "3": "3 hard: Complex reasoning, non-trivial debugging, multi-constraint design",
+          "4": "4 expert: Research-level proofs, deep architectural synthesis"
+        },
+        "probabilities": {
+          "0": 0.009,
+          "1": 0.008,
+          "2": 0.134,
+          "3": 0.601,
+          "4": 0.248
+        },
+        "confidence": 0.30
+      },
+      "precision": {
+        "type": "score",
+        "score": 2.18,
+        "legend": {
+          "0": "0 casual: Creative or conversational answers where multiple styles work",
+          "1": "1 loose: Informational text where minor inaccuracies have low impact",
+          "2": "2 accurate: Facts, runnable code, or specific instructions that should work",
+          "3": "3 exact: Math proofs, mission-critical systems, financial or legal exactness"
+        },
+        "probabilities": {
+          "0": 0.031,
+          "1": 0.031,
+          "2": 0.663,
+          "3": 0.275
+        },
+        "confidence": 0.36
+      },
+      "larger_model_benefit": {
+        "type": "score",
+        "score": 2.31,
+        "legend": {
+          "0": "0 none: Any capable small model answers equally well",
+          "1": "1 slight: A larger model may provide better phrasing or formatting",
+          "2": "2 clear: A larger model produces noticeably better reasoning and depth",
+          "3": "3 large: A smaller model would very likely fail or hallucinate"
+        },
+        "probabilities": {
+          "0": 0.065,
+          "1": 0.115,
+          "2": 0.266,
+          "3": 0.554
+        },
+        "confidence": 0.19
+      },
+      "needs_reasoning": {
+        "type": "noul",
+        "noul": 0.82
+      },
+      "task_changed": {
+        "type": "noul",
+        "noul": 0.12
+      }
+    },
+    "usage": {
+      "input_tokens": 1036,
+      "output_tokens": 0
+    }
+  },
+  "success": true,
+  "errors": [],
+  "messages": []
+}

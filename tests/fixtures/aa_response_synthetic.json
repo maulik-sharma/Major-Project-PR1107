@@ -1,0 +1,114 @@
+{
+  "tier": "free",
+  "intelligence_index_version": "4.3",
+  "pagination": {
+    "page": 1,
+    "page_size": 200,
+    "total_pages": 1,
+    "has_more": false
+  },
+  "data": [
+    {
+      "id": "syn-001",
+      "name": "Synthetic Flagship-1",
+      "slug": "synthetic-flagship-1",
+      "release_date": "2026-01-15",
+      "model_creator": {
+        "id": "creator-01",
+        "name": "Synthetic Lab"
+      },
+      "evaluations": {
+        "artificial_analysis_intelligence_index": 72.0,
+        "artificial_analysis_coding_index": 85.0,
+        "artificial_analysis_agentic_index": 65.0,
+        "artificial_analysis_finance_and_accounting_index": 70.0,
+        "artificial_analysis_strategy_and_ops_index": 68.0,
+        "artificial_analysis_legal_index": 74.0,
+        "artificial_analysis_healthcare_and_medical_index": 69.0,
+        "artificial_analysis_engineering_index": 80.0,
+        "artificial_analysis_economics_index": 71.0
+      },
+      "artificial_analysis_intelligence_index_cost": 25.0,
+      "pricing": {
+        "price_1m_input_tokens": 5.0,
+        "price_1m_output_tokens": 25.0,
+        "price_1m_cache_hit_tokens": 1.25,
+        "price_1m_cache_write_tokens": 6.25
+      },
+      "performance": {
+        "median_output_tokens_per_second": 65.0,
+        "median_time_to_first_token_seconds": 0.8,
+        "median_time_to_first_answer_token_seconds": 0.8,
+        "median_end_to_end_response_time_seconds": 4.5
+      }
+    },
+    {
+      "id": "syn-002",
+      "name": "Synthetic Mid-1",
+      "slug": "synthetic-mid-1",
+      "release_date": "2025-11-20",
+      "model_creator": {
+        "id": "creator-01",
+        "name": "Synthetic Lab"
+      },
+      "evaluations": {
+        "artificial_analysis_intelligence_index": 45.0,
+        "artificial_analysis_coding_index": 55.0,
+        "artificial_analysis_agentic_index": 38.0,
+        "artificial_analysis_finance_and_accounting_index": null,
+        "artificial_analysis_strategy_and_ops_index": null,
+        "artificial_analysis_legal_index": null,
+        "artificial_analysis_healthcare_and_medical_index": null,
+        "artificial_analysis_engineering_index": null,
+        "artificial_analysis_economics_index": null
+      },
+      "artificial_analysis_intelligence_index_cost": 6.0,
+      "pricing": {
+        "price_1m_input_tokens": 1.0,
+        "price_1m_output_tokens": 6.0,
+        "price_1m_cache_hit_tokens": 0.25,
+        "price_1m_cache_write_tokens": null
+      },
+      "performance": {
+        "median_output_tokens_per_second": 95.0,
+        "median_time_to_first_token_seconds": 0.45,
+        "median_time_to_first_answer_token_seconds": 0.45,
+        "median_end_to_end_response_time_seconds": 2.1
+      }
+    },
+    {
+      "id": "syn-003",
+      "name": "Synthetic Fast-1",
+      "slug": "synthetic-fast-1",
+      "release_date": "2025-09-01",
+      "model_creator": {
+        "id": "creator-02",
+        "name": "Open Synthetic"
+      },
+      "evaluations": {
+        "artificial_analysis_intelligence_index": 28.0,
+        "artificial_analysis_coding_index": 35.0,
+        "artificial_analysis_agentic_index": 15.0,
+        "artificial_analysis_finance_and_accounting_index": null,
+        "artificial_analysis_strategy_and_ops_index": null,
+        "artificial_analysis_legal_index": null,
+        "artificial_analysis_healthcare_and_medical_index": null,
+        "artificial_analysis_engineering_index": null,
+        "artificial_analysis_economics_index": null
+      },
+      "artificial_analysis_intelligence_index_cost": 0.08,
+      "pricing": {
+        "price_1m_input_tokens": 0.02,
+        "price_1m_output_tokens": 0.08,
+        "price_1m_cache_hit_tokens": null,
+        "price_1m_cache_write_tokens": null
+      },
+      "performance": {
+        "median_output_tokens_per_second": 140.0,
+        "median_time_to_first_token_seconds": 0.25,
+        "median_time_to_first_answer_token_seconds": 0.25,
+        "median_end_to_end_response_time_seconds": 1.1
+      }
+    }
+  ]
+}

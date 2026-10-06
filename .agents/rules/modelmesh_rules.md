@@ -18,3 +18,11 @@ These rules apply to all agent interactions in this repository.
 10. **Files stay small** (aim under ~300 lines). Type hints everywhere, docstrings on public members, `pathlib`, UTF-8 encoding.
 11. **Errors are normalized.** Use `ProviderError` with category and retryable flag.
 12. **Candidate-based architecture.** Operations work on `Candidate` (Model + Endpoint) objects.
+13. **A model is not a provider.** Model has endpoints; provider-specific data lives on the endpoint.
+14. **A decision model is not a chat model.** Clef-flash never goes in `models:` in `providers.yaml`. It lives in `routing.yaml` and `core/routing/smart/decision/`.
+15. **Scores are data, not config.** Never hardcode benchmark numbers in source or YAML. Everything comes from SQLite score snapshots.
+16. **External-data hygiene.** AA snapshots stay in SQLite; synthetic fixtures in tests; attribution "Model scores: Artificial Analysis" displayed.
+17. **Smart strategy never fails turn on decision failure.** Fall back to heuristic decision provider with `decision_source=heuristic_fallback`.
+18. **Routing math is pure.** `scoring.py` and `selector.py` do no I/O; network happens in `DecisionService`.
+19. **Privacy switch.** Never send user text if `send_prompt_text` is false. Truncate according to `max_state_tokens`.
+20. **Do not guess API shapes.** Use response fixtures from Phase 0.

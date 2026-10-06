@@ -1,0 +1,302 @@
+[
+  {
+    "id": "golden-01",
+    "prompt": "Hello! How are you doing today?",
+    "task": "chat_general",
+    "difficulty": 0,
+    "precision": 0,
+    "larger_model_benefit": 0,
+    "expected_tier": "cheap",
+    "description": "Standard friendly conversational greeting"
+  },
+  {
+    "id": "golden-02",
+    "prompt": "What is the capital city of France?",
+    "task": "chat_general",
+    "difficulty": 0,
+    "precision": 2,
+    "larger_model_benefit": 0,
+    "expected_tier": "cheap",
+    "description": "Single-step factual lookup"
+  },
+  {
+    "id": "golden-03",
+    "prompt": "Convert 100 degrees Fahrenheit to Celsius.",
+    "task": "math_reasoning",
+    "difficulty": 0,
+    "precision": 2,
+    "larger_model_benefit": 0,
+    "expected_tier": "cheap",
+    "description": "Basic arithmetic temperature conversion formula"
+  },
+  {
+    "id": "golden-04",
+    "prompt": "Give me a synonym for 'fast'.",
+    "task": "writing_creative",
+    "difficulty": 0,
+    "precision": 1,
+    "larger_model_benefit": 0,
+    "expected_tier": "cheap",
+    "description": "Simple vocabulary retrieval"
+  },
+  {
+    "id": "golden-05",
+    "prompt": "Translate 'Good morning, friend' to Spanish.",
+    "task": "translation_language",
+    "difficulty": 0,
+    "precision": 2,
+    "larger_model_benefit": 0,
+    "expected_tier": "cheap",
+    "description": "Elementary 3-word phrase translation"
+  },
+  {
+    "id": "golden-06",
+    "prompt": "Extract the email from: 'Contact us at support@example.com for help.'",
+    "task": "summarization_extraction",
+    "difficulty": 0,
+    "precision": 3,
+    "larger_model_benefit": 0,
+    "expected_tier": "cheap",
+    "description": "Trivial single entity extraction"
+  },
+  {
+    "id": "golden-07",
+    "prompt": "Write a single line Python command to print 'Hello World'.",
+    "task": "coding",
+    "difficulty": 0,
+    "precision": 2,
+    "larger_model_benefit": 0,
+    "expected_tier": "cheap",
+    "description": "One-line hello world script"
+  },
+  {
+    "id": "golden-08",
+    "prompt": "Check the current weather in Tokyo.",
+    "task": "agentic_tool_use",
+    "difficulty": 0,
+    "precision": 2,
+    "larger_model_benefit": 0,
+    "expected_tier": "cheap",
+    "description": "Single tool call query"
+  },
+  {
+    "id": "golden-09",
+    "prompt": "What is 15 multiplied by 8?",
+    "task": "math_reasoning",
+    "difficulty": 0,
+    "precision": 3,
+    "larger_model_benefit": 0,
+    "expected_tier": "cheap",
+    "description": "Elementary multiplication"
+  },
+  {
+    "id": "golden-10",
+    "prompt": "Summarize this sentence: 'The quick brown fox jumps over the lazy dog.'",
+    "task": "summarization_extraction",
+    "difficulty": 0,
+    "precision": 1,
+    "larger_model_benefit": 0,
+    "expected_tier": "cheap",
+    "description": "Trivial one-sentence summary"
+  },
+  {
+    "id": "golden-11",
+    "prompt": "Explain the difference between a process and a thread in operating systems with pros and cons.",
+    "task": "analysis_research",
+    "difficulty": 2,
+    "precision": 2,
+    "larger_model_benefit": 1,
+    "expected_tier": "mid",
+    "description": "Standard OS concept comparison"
+  },
+  {
+    "id": "golden-12",
+    "prompt": "Write a Python function to parse a CSV file and calculate the average of a specific column, handling missing values and invalid rows.",
+    "task": "coding",
+    "difficulty": 2,
+    "precision": 2,
+    "larger_model_benefit": 1,
+    "expected_tier": "mid",
+    "description": "Standard multi-step data parsing function"
+  },
+  {
+    "id": "golden-13",
+    "prompt": "Draft a polite professional email requesting a project deadline extension due to unforeseen vendor delays.",
+    "task": "writing_creative",
+    "difficulty": 1,
+    "precision": 1,
+    "larger_model_benefit": 1,
+    "expected_tier": "mid",
+    "description": "Professional business communication draft"
+  },
+  {
+    "id": "golden-14",
+    "prompt": "Solve the quadratic equation 2x^2 + 5x - 3 = 0 showing step-by-step factoring and quadratic formula derivation.",
+    "task": "math_reasoning",
+    "difficulty": 2,
+    "precision": 3,
+    "larger_model_benefit": 1,
+    "expected_tier": "mid",
+    "description": "Step-by-step algebra derivation"
+  },
+  {
+    "id": "golden-15",
+    "prompt": "Summarize the key architectural patterns of microservices vs monoliths and when to adopt each.",
+    "task": "summarization_extraction",
+    "difficulty": 2,
+    "precision": 2,
+    "larger_model_benefit": 2,
+    "expected_tier": "mid",
+    "description": "Technical trade-off synthesis"
+  },
+  {
+    "id": "golden-16",
+    "prompt": "Translate this business contract termination clause into German, preserving formal legal terminology.",
+    "task": "translation_language",
+    "difficulty": 2,
+    "precision": 3,
+    "larger_model_benefit": 2,
+    "expected_tier": "mid",
+    "description": "Formal domain-specific translation"
+  },
+  {
+    "id": "golden-17",
+    "prompt": "Fetch the latest stock price for Apple using web search and format a markdown table of its 5-day performance.",
+    "task": "agentic_tool_use",
+    "difficulty": 2,
+    "precision": 2,
+    "larger_model_benefit": 1,
+    "expected_tier": "mid",
+    "description": "Multi-step tool retrieval and structured formatting"
+  },
+  {
+    "id": "golden-18",
+    "prompt": "Compare PostgreSQL and MongoDB indexing strategies, including B-Tree, GIN, and compound indexes.",
+    "task": "analysis_research",
+    "difficulty": 2,
+    "precision": 2,
+    "larger_model_benefit": 2,
+    "expected_tier": "mid",
+    "description": "Database internals comparison"
+  },
+  {
+    "id": "golden-19",
+    "prompt": "Write an SQL query to find the top 3 highest-spending customers in each product category over the past year using window functions.",
+    "task": "coding",
+    "difficulty": 2,
+    "precision": 3,
+    "larger_model_benefit": 2,
+    "expected_tier": "mid",
+    "description": "SQL window function with partitioning and ranking"
+  },
+  {
+    "id": "golden-20",
+    "prompt": "Write a 3-paragraph compelling product launch blog post introducing a developer CLI tool.",
+    "task": "writing_creative",
+    "difficulty": 2,
+    "precision": 1,
+    "larger_model_benefit": 1,
+    "expected_tier": "mid",
+    "description": "Creative developer marketing copy"
+  },
+  {
+    "id": "golden-21",
+    "prompt": "Debug this 400-line async deadlock in Python with nested asyncio.gather and custom TaskGroup exception handlers. Find race conditions, memory leaks in circular references across coroutines, and write complete pytest-asyncio unit tests reproducing and fixing each issue.",
+    "task": "coding",
+    "difficulty": 3,
+    "precision": 3,
+    "larger_model_benefit": 3,
+    "expected_tier": "premium",
+    "description": "Complex concurrency debugging with memory leak analysis"
+  },
+  {
+    "id": "golden-22",
+    "prompt": "Prove by contradiction that the square root of 2 is irrational, and then generalize the proof to show that the square root of any non-square integer n is irrational using the Fundamental Theorem of Arithmetic.",
+    "task": "math_reasoning",
+    "difficulty": 3,
+    "precision": 3,
+    "larger_model_benefit": 3,
+    "expected_tier": "premium",
+    "description": "Rigorous number theory proof and generalization"
+  },
+  {
+    "id": "golden-23",
+    "prompt": "Design an end-to-end distributed consensus protocol using Raft with dynamic cluster membership changes, log compaction, snapshot streaming, and partitioned network recovery. Detail safety proofs and state transition tables.",
+    "task": "analysis_research",
+    "difficulty": 4,
+    "precision": 3,
+    "larger_model_benefit": 3,
+    "expected_tier": "premium",
+    "description": "High-complexity distributed systems architecture and proof"
+  },
+  {
+    "id": "golden-24",
+    "prompt": "Implement a lock-free multi-producer multi-consumer (MPMC) bounded ring buffer queue in C++20 using atomic CAS, memory orders (acquire/release/seq_cst), and explain ABA prevention and cache line bouncing avoidance.",
+    "task": "coding",
+    "difficulty": 4,
+    "precision": 3,
+    "larger_model_benefit": 3,
+    "expected_tier": "premium",
+    "description": "Low-level lock-free systems programming in modern C++"
+  },
+  {
+    "id": "golden-25",
+    "prompt": "Synthesize a comprehensive comparative analysis of zero-knowledge proof systems (zk-SNARKs vs zk-STARKs vs Bulletproofs), evaluating elliptic curve pairings, trusted setup requirements, arithmetization (R1CS vs AIR), and quantum resistance.",
+    "task": "analysis_research",
+    "difficulty": 4,
+    "precision": 3,
+    "larger_model_benefit": 3,
+    "expected_tier": "premium",
+    "description": "Advanced cryptography mathematical comparison"
+  },
+  {
+    "id": "golden-26",
+    "prompt": "Coordinate a multi-stage autonomous web-scraping and data-cleaning workflow using browser automation to bypass complex bot challenges, extract paginated dynamic tables, validate schema with Pydantic, and produce an enriched analytics report.",
+    "task": "agentic_tool_use",
+    "difficulty": 3,
+    "precision": 3,
+    "larger_model_benefit": 3,
+    "expected_tier": "premium",
+    "description": "Multi-agent tool orchestration with exception recovery"
+  },
+  {
+    "id": "golden-27",
+    "prompt": "Write a complete optimizing compiler intermediate representation (IR) pass in Rust that performs dead code elimination, constant propagation, and loop invariant code motion with dominance frontier analysis.",
+    "task": "coding",
+    "difficulty": 4,
+    "precision": 3,
+    "larger_model_benefit": 3,
+    "expected_tier": "premium",
+    "description": "Compiler design with static single assignment (SSA) optimization"
+  },
+  {
+    "id": "golden-28",
+    "prompt": "Derive the Navier-Stokes equations from continuum mechanics and the Reynolds transport theorem, detailing the Cauchy stress tensor decomposition into pressure and viscous stress.",
+    "task": "math_reasoning",
+    "difficulty": 4,
+    "precision": 3,
+    "larger_model_benefit": 3,
+    "expected_tier": "premium",
+    "description": "Vector calculus and fluid dynamics analytical derivation"
+  },
+  {
+    "id": "golden-29",
+    "prompt": "Draft an in-depth patent claim specification and architectural diagram for a novel decentralized Byzantine fault-tolerant identity verification protocol across sharded ledgers.",
+    "task": "writing_creative",
+    "difficulty": 3,
+    "precision": 3,
+    "larger_model_benefit": 3,
+    "expected_tier": "premium",
+    "description": "High-precision technical legal patent drafting"
+  },
+  {
+    "id": "golden-30",
+    "prompt": "Analyze a full Linux kernel coredump backtrace caused by an RCU stall in a custom network driver, explaining CPU cache coherency, smp_mb memory barriers, and softirq starvation.",
+    "task": "analysis_research",
+    "difficulty": 4,
+    "precision": 3,
+    "larger_model_benefit": 3,
+    "expected_tier": "premium",
+    "description": "Deep kernel debugging and low-level concurrency analysis"
+  }
+]

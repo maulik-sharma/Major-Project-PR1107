@@ -17,6 +17,7 @@ config/providers.yaml
 *.skills_state.json
 .skills_state.json
 data/
+scratch/
 
 # Python cache & build
 __pycache__/
