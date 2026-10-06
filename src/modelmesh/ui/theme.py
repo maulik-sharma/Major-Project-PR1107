@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Optional
 
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import QApplication
+
+_ICONS_DIR = (Path(__file__).parent / "icons").resolve()
+_SPIN_UP_LIGHT = str(_ICONS_DIR / "spin_up_light.svg").replace("\\", "/")
+_SPIN_DOWN_LIGHT = str(_ICONS_DIR / "spin_down_light.svg").replace("\\", "/")
+_SPIN_UP_DARK = str(_ICONS_DIR / "spin_up_dark.svg").replace("\\", "/")
+_SPIN_DOWN_DARK = str(_ICONS_DIR / "spin_down_dark.svg").replace("\\", "/")
+_COMBO_DOWN_LIGHT = str(_ICONS_DIR / "combo_down_light.svg").replace("\\", "/")
+_COMBO_DOWN_DARK = str(_ICONS_DIR / "combo_down_dark.svg").replace("\\", "/")
 
 DARK_THEME_QSS = """
 QMainWindow, QDialog, QWidget#settingsDialog, QWidget#usageDialog, QWidget#parametersDialog, QWidget#skillDetailDialog, QWidget#toolDetailDialog, QWidget#createSkillDialog, QWidget#addProviderDialog, QWidget#addEndpointDialog {
@@ -456,7 +465,7 @@ QComboBox {
     background-color: #1c1c1f;
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 7px;
-    padding: 4px 10px;
+    padding: 5px 26px 5px 10px;
     color: #f4f4f6;
     font-size: 12px;
     font-weight: 500;
@@ -485,13 +494,31 @@ QComboBox::drop-down {
     background: transparent;
 }
 
-QComboBox QAbstractItemView {
+QComboBox::down-arrow {
+    image: url("{_COMBO_DOWN_DARK}");
+    width: 9px;
+    height: 6px;
+    margin-right: 6px;
+}
+
+QComboBoxPrivateContainer {
     background-color: #18181b;
     border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+}
+
+QComboBoxPrivateScroller {
+    background-color: #18181b;
+    height: 0px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #18181b;
+    border: none;
     color: #f4f4f6;
     selection-background-color: #27272a;
     selection-color: #ffffff;
-    padding: 4px;
+    padding: 3px;
     outline: 0px;
 }
 
@@ -545,7 +572,7 @@ QPushButton:disabled {
     border-color: rgba(255, 255, 255, 0.04);
 }
 
-QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox {
+QLineEdit, QTextEdit, QPlainTextEdit {
     background-color: #18181b;
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 7px;
@@ -554,9 +581,64 @@ QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox {
     font-size: 12.5px;
 }
 
-QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
     border-color: #3b82f6;
     background-color: #1c1c1f;
+}
+
+QSpinBox, QDoubleSpinBox {
+    background-color: #18181b;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 7px;
+    padding: 5px 22px 5px 10px;
+    color: #f4f4f6;
+    font-size: 12.5px;
+}
+
+QSpinBox:focus, QDoubleSpinBox:focus {
+    border-color: #3b82f6;
+    background-color: #1c1c1f;
+}
+
+QSpinBox::up-button, QDoubleSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 20px;
+    height: 14px;
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-top-right-radius: 6px;
+    background-color: #222226;
+}
+
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover {
+    background-color: #2a2a30;
+}
+
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+    image: url("{_SPIN_UP_DARK}");
+    width: 8px;
+    height: 5px;
+}
+
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 20px;
+    height: 14px;
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom-right-radius: 6px;
+    background-color: #222226;
+}
+
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {
+    background-color: #2a2a30;
+}
+
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+    image: url("{_SPIN_DOWN_DARK}");
+    width: 8px;
+    height: 5px;
 }
 
 /* Checkbox */
@@ -717,18 +799,55 @@ QStatusBar {
 QScrollBar:vertical {
     border: none;
     background: transparent;
-    width: 6px;
+    width: 7px;
     margin: 0px;
 }
 
 QScrollBar::handle:vertical {
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.16);
     min-height: 24px;
     border-radius: 3px;
 }
 
 QScrollBar::handle:vertical:hover {
-    background: rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.28);
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    width: 0px;
+    height: 0px;
+    background: transparent;
+    border: none;
+}
+
+QScrollBar:horizontal {
+    border: none;
+    background: transparent;
+    height: 7px;
+    margin: 0px;
+}
+
+QScrollBar::handle:horizontal {
+    background: rgba(255, 255, 255, 0.16);
+    min-width: 24px;
+    border-radius: 3px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background: rgba(255, 255, 255, 0.28);
+}
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal,
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+    width: 0px;
+    height: 0px;
+    background: transparent;
+    border: none;
+}
+
+QScrollBar::corner {
+    background: transparent;
 }
 
 /* Dynamic Component Overrides */
@@ -838,6 +957,13 @@ QScrollBar::handle:vertical:hover {
     font-weight: 600;
 }
 """
+
+DARK_THEME_QSS = (
+    DARK_THEME_QSS
+    .replace("{_COMBO_DOWN_DARK}", _COMBO_DOWN_DARK)
+    .replace("{_SPIN_UP_DARK}", _SPIN_UP_DARK)
+    .replace("{_SPIN_DOWN_DARK}", _SPIN_DOWN_DARK)
+)
 
 LIGHT_THEME_QSS = """
 QMainWindow, QDialog, QWidget#settingsDialog, QWidget#usageDialog, QWidget#parametersDialog, QWidget#skillDetailDialog, QWidget#toolDetailDialog, QWidget#createSkillDialog, QWidget#addProviderDialog, QWidget#addEndpointDialog {
@@ -1284,7 +1410,7 @@ QComboBox {
     background-color: #ffffff;
     border: 1px solid #cbd5e1;
     border-radius: 7px;
-    padding: 4px 10px;
+    padding: 5px 26px 5px 10px;
     color: #0f172a;
     font-size: 12px;
     font-weight: 500;
@@ -1313,13 +1439,31 @@ QComboBox::drop-down {
     background: transparent;
 }
 
-QComboBox QAbstractItemView {
+QComboBox::down-arrow {
+    image: url("{_COMBO_DOWN_LIGHT}");
+    width: 9px;
+    height: 6px;
+    margin-right: 6px;
+}
+
+QComboBoxPrivateContainer {
     background-color: #ffffff;
     border: 1px solid #cbd5e1;
+    border-radius: 6px;
+}
+
+QComboBoxPrivateScroller {
+    background-color: #ffffff;
+    height: 0px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #ffffff;
+    border: none;
     color: #0f172a;
     selection-background-color: #eff6ff;
     selection-color: #1e40af;
-    padding: 4px;
+    padding: 3px;
     outline: 0px;
 }
 
@@ -1373,7 +1517,7 @@ QPushButton:disabled {
     border-color: #e2e8f0;
 }
 
-QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox {
+QLineEdit, QTextEdit, QPlainTextEdit {
     background-color: #ffffff;
     border: 1px solid #cbd5e1;
     border-radius: 7px;
@@ -1382,9 +1526,64 @@ QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox {
     font-size: 12.5px;
 }
 
-QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
     border-color: #2563eb;
     background-color: #ffffff;
+}
+
+QSpinBox, QDoubleSpinBox {
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    padding: 5px 22px 5px 10px;
+    color: #0f172a;
+    font-size: 12.5px;
+}
+
+QSpinBox:focus, QDoubleSpinBox:focus {
+    border-color: #2563eb;
+    background-color: #ffffff;
+}
+
+QSpinBox::up-button, QDoubleSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 20px;
+    height: 14px;
+    border-left: 1px solid #cbd5e1;
+    border-bottom: 1px solid #e2e8f0;
+    border-top-right-radius: 6px;
+    background-color: #f8fafc;
+}
+
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover {
+    background-color: #e2e8f0;
+}
+
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+    image: url("{_SPIN_UP_LIGHT}");
+    width: 8px;
+    height: 5px;
+}
+
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 20px;
+    height: 14px;
+    border-left: 1px solid #cbd5e1;
+    border-bottom-right-radius: 6px;
+    background-color: #f8fafc;
+}
+
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {
+    background-color: #e2e8f0;
+}
+
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+    image: url("{_SPIN_DOWN_LIGHT}");
+    width: 8px;
+    height: 5px;
 }
 
 /* Checkbox */
@@ -1545,7 +1744,7 @@ QStatusBar {
 QScrollBar:vertical {
     border: none;
     background: transparent;
-    width: 6px;
+    width: 7px;
     margin: 0px;
 }
 
@@ -1557,6 +1756,43 @@ QScrollBar::handle:vertical {
 
 QScrollBar::handle:vertical:hover {
     background: rgba(0, 0, 0, 0.28);
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    width: 0px;
+    height: 0px;
+    background: transparent;
+    border: none;
+}
+
+QScrollBar:horizontal {
+    border: none;
+    background: transparent;
+    height: 7px;
+    margin: 0px;
+}
+
+QScrollBar::handle:horizontal {
+    background: rgba(0, 0, 0, 0.16);
+    min-width: 24px;
+    border-radius: 3px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background: rgba(0, 0, 0, 0.28);
+}
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal,
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+    width: 0px;
+    height: 0px;
+    background: transparent;
+    border: none;
+}
+
+QScrollBar::corner {
+    background: transparent;
 }
 
 /* Dynamic Component Overrides */
@@ -1666,6 +1902,13 @@ QScrollBar::handle:vertical:hover {
     font-weight: 600;
 }
 """
+
+LIGHT_THEME_QSS = (
+    LIGHT_THEME_QSS
+    .replace("{_COMBO_DOWN_LIGHT}", _COMBO_DOWN_LIGHT)
+    .replace("{_SPIN_UP_LIGHT}", _SPIN_UP_LIGHT)
+    .replace("{_SPIN_DOWN_LIGHT}", _SPIN_DOWN_LIGHT)
+)
 
 
 def _get_light_palette() -> QPalette:
