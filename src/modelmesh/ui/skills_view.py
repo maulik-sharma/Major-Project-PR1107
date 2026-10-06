@@ -215,7 +215,7 @@ class SkillsView(QWidget):
         pills_layout.setSpacing(6)
         self.pill_group = QButtonGroup(self)
 
-        self.pill_all = QPushButton("All Skills")
+        self.pill_all = QPushButton("All")
         self.pill_all.setCheckable(True)
         self.pill_all.setChecked(True)
         self.pill_all.setProperty("class", "skillFilterPill")

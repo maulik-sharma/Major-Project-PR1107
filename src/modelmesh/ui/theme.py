@@ -90,7 +90,7 @@ QToolButton:checked {
     padding: 7px 12px;
     font-weight: 500;
     font-size: 12.5px;
-    text-align: center;
+    text-align: left;
 }
 
 #sidebarSkillsBtn:hover, #sidebarToolsBtn:hover {
@@ -391,9 +391,9 @@ QToolButton:checked {
 }
 
 #toolCardInitialBadge {
-    background-color: rgba(59, 130, 246, 0.12);
-    color: #60a5fa;
-    border: 1px solid rgba(59, 130, 246, 0.25);
+    background-color: rgba(255, 255, 255, 0.07);
+    color: #e4e4e7;
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 7px;
     font-size: 13px;
     font-weight: 600;

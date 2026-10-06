@@ -70,23 +70,18 @@ class SidebarWidget(QWidget):
         shortcut_new = QShortcut(QKeySequence("Ctrl+N"), self)
         shortcut_new.activated.connect(self._on_new_chat_clicked)
 
-        # Navigation Buttons (Skills & Tools)
-        nav_row = QHBoxLayout()
-        nav_row.setSpacing(6)
-
+        # Navigation Buttons (Skills & Tools stacked vertically)
         self.skills_nav_btn = QPushButton("Skills")
         self.skills_nav_btn.setObjectName("sidebarSkillsBtn")
         self.skills_nav_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.skills_nav_btn.clicked.connect(self._on_skills_clicked)
-        nav_row.addWidget(self.skills_nav_btn)
+        header_layout.addWidget(self.skills_nav_btn)
 
         self.tools_nav_btn = QPushButton("Tools")
         self.tools_nav_btn.setObjectName("sidebarToolsBtn")
         self.tools_nav_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.tools_nav_btn.clicked.connect(self._on_tools_clicked)
-        nav_row.addWidget(self.tools_nav_btn)
-
-        header_layout.addLayout(nav_row)
+        header_layout.addWidget(self.tools_nav_btn)
 
         # Search box
         self.search_box = QLineEdit()

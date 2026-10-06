@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QTWEBENGINE_DISABLE_SANDBOX", "1")
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QLabel, QPushButton
 
 # Single QApplication fixture for pytest session
 @pytest.fixture(scope="session")
@@ -586,23 +586,26 @@ def test_tools_view_and_cards(qapp, tmp_path: Path) -> None:
     web_card = next(c for c in cards if c.spec.name == "web_search")
     assert web_card.enabled is True
 
+    # Verify no category/param tags next to title and button says "View"
+    assert web_card.findChild(QLabel, "toolCategoryBadge") is None
+    assert web_card.findChild(QLabel, "toolParamBadge") is None
+    assert web_card.findChild(QPushButton, "toolCardActionBtn").text() == "View"
+
     web_card.toggle_btn.click()
     assert tool_reg.is_tool_enabled("web_search") is False
 
-    # Test filter by category pill (Web & Search)
-    web_pill = next(b for b in view.pill_group.buttons() if b.text() == "Web & Search")
-    web_pill.click()
+    # Test filter by Active pill
+    view.pill_active.click()
     active_cards = [view.cards_layout.itemAt(i).widget() for i in range(view.cards_layout.count()) if isinstance(view.cards_layout.itemAt(i).widget(), ToolCard)]
     names = [c.spec.name for c in active_cards]
-    assert "web_search" in names
-    assert "fetch_url" in names
-    assert "calculator" not in names
+    assert "web_search" not in names
+    assert "calculator" in names
+
+    # Switch back to All Tools
+    view.pill_all.click()
 
     # Test search filter
     view.search_box.setText("calculator")
-    # Switch back to All
-    all_pill = next(b for b in view.pill_group.buttons() if b.text() == "All Tools")
-    all_pill.click()
     calc_cards = [view.cards_layout.itemAt(i).widget() for i in range(view.cards_layout.count()) if isinstance(view.cards_layout.itemAt(i).widget(), ToolCard)]
     assert len(calc_cards) == 1
     assert calc_cards[0].spec.name == "calculator"

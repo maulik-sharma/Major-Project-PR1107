@@ -1,4 +1,4 @@
-"""Dedicated Tools workspace view with category filtering, search, toggles, and workspace management."""
+"""Dedicated Tools workspace view with clean management, filtering, toggles, and workspace configuration."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from modelmesh.ui.tool_detail_dialog import ToolDetailDialog
 
 
 class ToolCard(QFrame):
-    """Visual card displaying a tool specification, parameters, category, and actions."""
+    """Visual card displaying a tool specification, description, active toggle, and View action."""
 
     toggled = pyqtSignal(str, bool)
     details_requested = pyqtSignal(str)
@@ -35,13 +35,11 @@ class ToolCard(QFrame):
     def __init__(
         self,
         spec: ToolSpec,
-        category: str,
         enabled: bool,
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
         self.spec = spec
-        self.category = category
         self.enabled = enabled
         self.setObjectName("toolCard")
         self._init_ui()
@@ -71,25 +69,6 @@ class ToolCard(QFrame):
         name_lbl = QLabel(self.spec.name)
         name_lbl.setObjectName("toolCardTitle")
         title_row.addWidget(name_lbl)
-
-        cat_badge = QLabel(self.category)
-        cat_badge.setObjectName("toolCategoryBadge")
-        title_row.addWidget(cat_badge)
-
-        # Add parameter badges
-        props = self.spec.parameters.get("properties", {})
-        reqs = set(self.spec.parameters.get("required", []))
-        for p_name in list(props.keys())[:3]:
-            req_marker = "*" if p_name in reqs else ""
-            p_lbl = QLabel(f"{p_name}{req_marker}")
-            p_lbl.setObjectName("toolParamBadge")
-            title_row.addWidget(p_lbl)
-
-        if len(props) > 3:
-            more_lbl = QLabel(f"+{len(props) - 3}")
-            more_lbl.setObjectName("toolParamBadge")
-            title_row.addWidget(more_lbl)
-
         title_row.addStretch()
         content_layout.addLayout(title_row)
 
@@ -116,12 +95,12 @@ class ToolCard(QFrame):
         self.toggle_btn.clicked.connect(self._on_toggle)
         actions_layout.addWidget(self.toggle_btn)
 
-        # Details & Test Button
-        details_btn = QPushButton("Details & Test")
-        details_btn.setObjectName("toolCardActionBtn")
-        details_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        details_btn.clicked.connect(lambda: self.details_requested.emit(self.spec.name))
-        actions_layout.addWidget(details_btn)
+        # View Button
+        view_btn = QPushButton("View")
+        view_btn.setObjectName("toolCardActionBtn")
+        view_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        view_btn.clicked.connect(lambda: self.details_requested.emit(self.spec.name))
+        actions_layout.addWidget(view_btn)
 
         layout.addWidget(actions_widget)
 
@@ -164,7 +143,7 @@ class ToolsView(QWidget):
             engine.tool_registry if getattr(engine, "tool_registry", None) is not None
             else ToolRegistry()
         )
-        self._current_filter: str = "all"  # "all", "active", "web", "filesystem", "math"
+        self._current_filter: str = "all"  # "all" or "active"
 
         self._load_saved_settings()
         self._init_ui()
@@ -204,7 +183,7 @@ class ToolsView(QWidget):
         title_col.addWidget(title_lbl)
 
         subtitle_lbl = QLabel(
-            "Manage tools and capabilities that LLMs can invoke during conversations (Web Search, File I/O, Calculator)."
+            "Manage tools and capabilities that LLMs can invoke during conversations."
         )
         subtitle_lbl.setObjectName("toolsHeaderSubtitle")
         title_col.addWidget(subtitle_lbl)
@@ -243,27 +222,25 @@ class ToolsView(QWidget):
         filter_layout.setContentsMargins(0, 0, 0, 0)
         filter_layout.setSpacing(10)
 
+        # Filter Pills: "All Tools" and "Active"
         pills_layout = QHBoxLayout()
         pills_layout.setSpacing(6)
         self.pill_group = QButtonGroup(self)
 
-        filters = [
-            ("All Tools", "all"),
-            ("Active", "active"),
-            ("Web & Search", "web"),
-            ("Filesystem", "filesystem"),
-            ("Utilities", "math"),
-        ]
+        self.pill_all = QPushButton("All")
+        self.pill_all.setCheckable(True)
+        self.pill_all.setChecked(True)
+        self.pill_all.setProperty("class", "toolFilterPill")
+        self.pill_all.clicked.connect(lambda: self._set_filter("all"))
+        self.pill_group.addButton(self.pill_all)
+        pills_layout.addWidget(self.pill_all)
 
-        for idx, (label, ftype) in enumerate(filters):
-            pill = QPushButton(label)
-            pill.setCheckable(True)
-            if idx == 0:
-                pill.setChecked(True)
-            pill.setProperty("class", "toolFilterPill")
-            pill.clicked.connect(lambda _, t=ftype: self._set_filter(t))
-            self.pill_group.addButton(pill)
-            pills_layout.addWidget(pill)
+        self.pill_active = QPushButton("Active")
+        self.pill_active.setCheckable(True)
+        self.pill_active.setProperty("class", "toolFilterPill")
+        self.pill_active.clicked.connect(lambda: self._set_filter("active"))
+        self.pill_group.addButton(self.pill_active)
+        pills_layout.addWidget(self.pill_active)
 
         filter_layout.addLayout(pills_layout)
         filter_layout.addStretch()
@@ -303,7 +280,7 @@ class ToolsView(QWidget):
         self._apply_filter()
 
     def _apply_filter(self) -> None:
-        """Filter tools by query, active toggle, and category tab."""
+        """Filter tools by search query and active tab."""
         while self.cards_layout.count() > 1:
             item = self.cards_layout.takeAt(0)
             if item.widget():
@@ -314,26 +291,15 @@ class ToolsView(QWidget):
 
         filtered: List[ToolSpec] = []
         for spec in specs:
-            category = self.registry.get_category(spec.name)
             is_enabled = self.registry.is_tool_enabled(spec.name)
 
-            # Apply category/active filter
             if self._current_filter == "active" and not is_enabled:
                 continue
-            elif self._current_filter == "web" and category != "Web & Search":
-                continue
-            elif self._current_filter == "filesystem" and category != "Filesystem & Workspace":
-                continue
-            elif self._current_filter == "math" and category != "Math & Utilities":
-                continue
 
-            # Apply search query
             if query:
                 in_name = query in spec.name.lower()
                 in_desc = query in spec.description.lower()
-                in_cat = query in category.lower()
-                in_props = any(query in p.lower() for p in spec.parameters.get("properties", {}).keys())
-                if not (in_name or in_desc or in_cat or in_props):
+                if not (in_name or in_desc):
                     continue
 
             filtered.append(spec)
@@ -346,16 +312,14 @@ class ToolsView(QWidget):
             return
 
         for idx, spec in enumerate(filtered):
-            cat = self.registry.get_category(spec.name)
             enabled = self.registry.is_tool_enabled(spec.name)
-            card = ToolCard(spec=spec, category=cat, enabled=enabled, parent=self.cards_container)
+            card = ToolCard(spec=spec, enabled=enabled, parent=self.cards_container)
             card.toggled.connect(self._on_tool_toggled)
             card.details_requested.connect(self._on_view_details)
             self.cards_layout.insertWidget(idx, card)
 
     def _on_tool_toggled(self, name: str, enabled: bool) -> None:
         self.registry.set_tool_enabled(name, enabled)
-        # Persist disabled tools list
         settings = get_app_settings()
         disabled_list = list(self.registry._disabled_tools)
         settings.setValue("disabled_tools", disabled_list)
