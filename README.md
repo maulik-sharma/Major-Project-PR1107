@@ -408,6 +408,18 @@ pytest -v
 
 ---
 
+## Datasets:
+1. https://huggingface.co/datasets/routellm/gpt4_judge_battles
+2. https://huggingface.co/datasets/routellm/gpt4_dataset
+3. https://huggingface.co/datasets/routellm/arena_battles_embeddings
+4. https://huggingface.co/datasets/routellm/mmlu_battles_embeddings
+5. https://huggingface.co/datasets/routellm/gpt4_judge_battles_embeddings
+6. https://huggingface.co/datasets/routellm/mmlu_battles
+7. https://huggingface.co/datasets/routellm/lmsys-arena-human-preference-55k-thresholds
+
+## Models
+https://huggingface.co/routellm/models
+   
 ## Attribution
 
 Model intelligence metrics and benchmark ratings are provided by [Artificial Analysis](https://artificialanalysis.ai).
