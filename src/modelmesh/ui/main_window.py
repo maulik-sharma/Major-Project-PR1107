@@ -611,6 +611,7 @@ class MainWindow(QMainWindow):
     def _open_settings_dialog(self, tab_index: int = 0) -> None:
         dlg = SettingsDialog(
             registry=self.registry,
+            storage=self.storage,
             tool_registry=self.engine.tool_registry,
             skill_loader=self.engine.skill_loader,
             parent=self,

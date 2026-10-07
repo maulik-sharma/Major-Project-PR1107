@@ -46,7 +46,8 @@ def compute_need(
     )
 
     bias = bias_override if bias_override is not None else need_config.bias
-    uncertainty_term = need_config.uncertainty_k * (1.0 - conf_diff)
+    diff_scale = min(1.0, max(0.1, diff_val / 1.5))
+    uncertainty_term = need_config.uncertainty_k * (1.0 - conf_diff) * diff_scale
 
     return clamp(need_raw + bias + uncertainty_term, 0.0, 1.0)
 

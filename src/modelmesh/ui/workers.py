@@ -163,9 +163,15 @@ class ScoresRefreshWorker(QThread):
     finished_refresh = pyqtSignal(dict)
     error_occurred = pyqtSignal(str)
 
-    def __init__(self, api_key: Optional[str] = None, parent: Optional[Any] = None) -> None:
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        storage: Optional[Any] = None,
+        parent: Optional[Any] = None,
+    ) -> None:
         super().__init__(parent)
         self.api_key = api_key
+        self.storage = storage
 
     def run(self) -> None:
         self.started_refresh.emit()
@@ -177,7 +183,7 @@ class ScoresRefreshWorker(QThread):
             client = ArtificialAnalysisClient(api_key=self.api_key)
             snapshot = client.fetch_snapshot()
 
-            storage = get_default_storage()
+            storage = self.storage or get_default_storage()
             store = ScoreStore(storage)
             store.save_snapshot(snapshot)
 
@@ -202,11 +208,13 @@ class DecisionTestWorker(QThread):
         self,
         prompt_text: str,
         provider_id: Optional[str] = None,
+        storage: Optional[Any] = None,
         parent: Optional[Any] = None,
     ) -> None:
         super().__init__(parent)
         self.prompt_text = prompt_text
         self.provider_id = provider_id
+        self.storage = storage
 
     def run(self) -> None:
         try:
@@ -216,7 +224,7 @@ class DecisionTestWorker(QThread):
             from modelmesh.core.types import ChatRequest, Message, TextPart
 
             config = load_routing_config()
-            storage = get_default_storage()
+            storage = self.storage or get_default_storage()
             service = DecisionService(config=config, storage=storage)
 
             req = ChatRequest(

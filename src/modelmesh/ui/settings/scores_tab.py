@@ -114,11 +114,12 @@ class ScoresTab(QWidget):
     def __init__(
         self,
         registry: ModelRegistry,
+        storage: Optional[Any] = None,
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
         self.registry = registry
-        self.storage = get_default_storage()
+        self.storage = storage or get_default_storage()
         self.store = ScoreStore(self.storage)
         self._refresh_worker: Optional[ScoresRefreshWorker] = None
 
@@ -328,7 +329,7 @@ class ScoresTab(QWidget):
         self.refresh_btn.setEnabled(False)
         self.refresh_btn.setText("Fetching...")
 
-        self._refresh_worker = ScoresRefreshWorker(parent=self)
+        self._refresh_worker = ScoresRefreshWorker(storage=self.storage, parent=self)
         self._refresh_worker.finished_refresh.connect(self._on_refresh_finished)
         self._refresh_worker.error_occurred.connect(self._on_refresh_error)
         self._refresh_worker.start()

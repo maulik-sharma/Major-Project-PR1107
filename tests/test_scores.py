@@ -204,3 +204,66 @@ def test_aa_client_pagination() -> None:
     assert len(snapshot.models_by_slug) == 2
     assert snapshot.index_version == "4.3"
     assert snapshot.rate_limit_remaining == 97
+
+
+def test_score_persistence_across_storage_instances(tmp_path: Path) -> None:
+    """Verify that snapshots persist across independent storage instances (app restarts)."""
+    db_file = tmp_path / "restart_test.db"
+
+    # 1. Save snapshot in first app session
+    s1 = Storage(db_file)
+    store1 = ScoreStore(s1)
+    snap = ScoreSnapshot.from_raw(
+        models_list=[
+            {
+                "slug": "claude-opus-5-5",
+                "name": "Claude Opus 5.5",
+                "evaluations": {"artificial_analysis_intelligence_index": 57.6},
+            }
+        ],
+        index_version="4.3",
+    )
+    store1.save_snapshot(snap)
+
+    # 2. Open new app session with fresh storage instance pointing to same file
+    s2 = Storage(db_file)
+    store2 = ScoreStore(s2)
+    loaded = store2.get_latest_snapshot()
+
+    assert loaded is not None
+    assert "claude-opus-5-5" in loaded.models_by_slug
+    assert loaded.models_by_slug["claude-opus-5-5"]["evaluations"]["artificial_analysis_intelligence_index"] == 57.6
+
+
+def test_empty_snapshot_defensive_skip(tmp_path: Path) -> None:
+    """Verify that an empty snapshot does not shadow an existing populated snapshot."""
+    db_file = tmp_path / "defensive_test.db"
+    storage = Storage(db_file)
+    store = ScoreStore(storage)
+
+    # Save populated snapshot
+    pop_snap = ScoreSnapshot.from_raw(
+        models_list=[
+            {
+                "slug": "m1",
+                "evaluations": {"artificial_analysis_intelligence_index": 80.0},
+            }
+        ],
+        index_version="4.3",
+        fetched_at=1000.0,
+    )
+    store.save_snapshot(pop_snap)
+
+    # Save empty snapshot with newer timestamp
+    empty_snap = ScoreSnapshot.from_raw(
+        models_list=[],
+        index_version="4.3",
+        fetched_at=2000.0,
+    )
+    store.save_snapshot(empty_snap)
+
+    # Latest should still resolve the populated snapshot
+    latest = store.get_latest_snapshot()
+    assert latest is not None
+    assert "m1" in latest.models_by_slug
+

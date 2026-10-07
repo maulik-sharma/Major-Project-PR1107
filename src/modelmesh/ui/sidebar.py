@@ -115,11 +115,12 @@ class SidebarWidget(QWidget):
         footer_layout.setContentsMargins(8, 8, 8, 8)
         footer_layout.setSpacing(2)
 
-        usage_btn = QPushButton("Usage Dashboard")
-        usage_btn.setProperty("class", "sidebarActionBtn")
-        usage_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        usage_btn.clicked.connect(self.usage_requested)
-        footer_layout.addWidget(usage_btn)
+        self.usage_btn = QPushButton("Usage Dashboard")
+        self.usage_btn.setProperty("class", "sidebarActionBtn")
+        self.usage_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.usage_btn.clicked.connect(self.usage_requested)
+        self.usage_btn.setVisible(False)
+        footer_layout.addWidget(self.usage_btn)
 
         settings_btn = QPushButton("Settings")
         settings_btn.setProperty("class", "sidebarActionBtn")

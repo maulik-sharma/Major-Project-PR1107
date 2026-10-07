@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -151,6 +152,18 @@ GROUP BY chosen_endpoint_id, provider_id;
 
 def get_default_db_path() -> Path:
     """Determine SQLite database storage path in project data directory."""
+    env_path = os.environ.get("MODELMESH_DB_PATH")
+    if env_path:
+        p = Path(env_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+    for candidate_dir in [
+        Path.cwd() / "data",
+        Path(__file__).resolve().parent.parent.parent.parent / "data",
+    ]:
+        if (candidate_dir.parent / "config").exists() or candidate_dir.exists():
+            candidate_dir.mkdir(parents=True, exist_ok=True)
+            return candidate_dir / "modelmesh.db"
     data_dir = Path.cwd() / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir / "modelmesh.db"
@@ -575,18 +588,25 @@ class Storage:
     def get_latest_score_snapshot(self, source: str = "artificial_analysis") -> Optional[Dict[str, Any]]:
         with self._lock:
             with self._get_connection() as conn:
-                row = conn.execute(
+                rows = conn.execute(
                     """
                     SELECT * FROM score_snapshots
                     WHERE source = ?
                     ORDER BY fetched_at DESC
-                    LIMIT 1
+                    LIMIT 10
                     """,
                     (source,),
-                ).fetchone()
-                if not row:
+                ).fetchall()
+                if not rows:
                     return None
-                d = dict(row)
+                for row in rows:
+                    d = dict(row)
+                    payload = json.loads(d["payload_json"])
+                    models = payload.get("models") or payload.get("data") or []
+                    if len(models) > 0:
+                        d["payload"] = payload
+                        return d
+                d = dict(rows[0])
                 d["payload"] = json.loads(d["payload_json"])
                 return d
 

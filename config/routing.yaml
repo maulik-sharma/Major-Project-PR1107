@@ -85,7 +85,7 @@ need:
     difficulty: 0.45
     precision: 0.2
     larger_model_benefit: 0.3
-  bias: 0.6
+  bias: 0.0
   uncertainty_k: 0.15
   slack: 0.1
 metric_by_task:

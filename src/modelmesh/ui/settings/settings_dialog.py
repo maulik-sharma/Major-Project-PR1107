@@ -30,6 +30,7 @@ class SettingsDialog(QDialog):
     def __init__(
         self,
         registry: ModelRegistry,
+        storage: Optional[Any] = None,
         tool_registry: Optional[Any] = None,
         skill_loader: Optional[Any] = None,
         parent: Optional[QWidget] = None,
@@ -41,6 +42,7 @@ class SettingsDialog(QDialog):
         self.resize(800, 560)
 
         self.registry = registry
+        self.storage = storage
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
@@ -59,7 +61,7 @@ class SettingsDialog(QDialog):
         self.tabs.addTab(self.models_tab, "Endpoints")
 
         # 3. Scores Tab
-        self.scores_tab = ScoresTab(registry=self.registry, parent=self)
+        self.scores_tab = ScoresTab(registry=self.registry, storage=self.storage, parent=self)
         self.scores_tab.config_changed.connect(self._on_tab_config_changed)
         self.tabs.addTab(self.scores_tab, "Scores")
 

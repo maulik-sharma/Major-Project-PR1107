@@ -55,14 +55,22 @@ class HeuristicDecisionProvider(DecisionProvider):
         has_code_fences = "```" in state
 
         diff_score = 0.5
-        if length < 60 and lines <= 2:
-            diff_score = 0.1  # Trivial
+        conf_diff = 0.80
+        if length < 60 and lines <= 2 and task_choice == "chat_general":
+            diff_score = 0.05  # Trivial greeting / simple chat
+            conf_diff = 0.95
+        elif length < 250 and task_choice == "chat_general":
+            diff_score = 0.6   # Casual chat
+            conf_diff = 0.85
         elif length < 250:
-            diff_score = 1.2  # Easy
+            diff_score = 1.0   # Easy
+            conf_diff = 0.80
         elif length < 800:
-            diff_score = 2.0  # Moderate
+            diff_score = 2.0   # Moderate
+            conf_diff = 0.75
         else:
-            diff_score = 3.2  # Hard
+            diff_score = 3.2   # Hard
+            conf_diff = 0.70
 
         if has_code_fences or "deadlock" in state_lower or "consensus" in state_lower or "lock-free" in state_lower or "dominance" in state_lower:
             diff_score = min(4.0, diff_score + 1.0)
@@ -73,8 +81,8 @@ class HeuristicDecisionProvider(DecisionProvider):
             precision_score = 2.5
         elif task_choice in ("analysis_research", "translation_language"):
             precision_score = 2.0
-        elif task_choice == "chat_general" and diff_score < 0.5:
-            precision_score = 0.2
+        elif task_choice == "chat_general":
+            precision_score = 0.1 if diff_score <= 0.1 else 0.4
 
         # 4. Larger model benefit (0 to 3)
         benefit_score = 0.5
@@ -82,13 +90,17 @@ class HeuristicDecisionProvider(DecisionProvider):
             benefit_score = 2.8
         elif diff_score >= 2.0:
             benefit_score = 1.6
+        elif diff_score <= 0.1:
+            benefit_score = 0.05
         elif diff_score < 1.0:
-            benefit_score = 0.2
+            benefit_score = 0.3
 
         # 5. Needs reasoning (0 to 1)
         needs_reasoning = 0.1
         if task_choice in ("math_reasoning", "coding") or diff_score >= 2.5:
             needs_reasoning = 0.85
+        elif diff_score <= 0.1:
+            needs_reasoning = 0.0
 
         # 6. Task changed (0 to 1)
         task_changed = 0.2
@@ -103,17 +115,17 @@ class HeuristicDecisionProvider(DecisionProvider):
             "difficulty": {
                 "type": "score",
                 "score": round(diff_score, 2),
-                "confidence": 0.60,
+                "confidence": round(conf_diff, 2),
             },
             "precision": {
                 "type": "score",
                 "score": round(precision_score, 2),
-                "confidence": 0.65,
+                "confidence": 0.75 if diff_score <= 0.1 else 0.65,
             },
             "larger_model_benefit": {
                 "type": "score",
                 "score": round(benefit_score, 2),
-                "confidence": 0.60,
+                "confidence": 0.75 if diff_score <= 0.1 else 0.60,
             },
             "needs_reasoning": {
                 "type": "noul",

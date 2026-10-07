@@ -147,10 +147,10 @@ def select_smart_candidate(
         below_bar_candidates = [c for c in scored_candidates if c not in admitted_candidates]
 
     # 5. Pick cheapest in admitted set
-    def rank_key(cand: Candidate) -> tuple[float, float, int, str]:
+    def rank_key(cand: Candidate) -> tuple[float, int, float, str]:
         cost = _estimate_cost(cand, tokens_in_est, tokens_out_est)
         q = q_map.get(cand.model_id, 0.0)
-        return (cost, -q, cand.priority, cand.endpoint_id)
+        return (cost, cand.priority, -q, cand.endpoint_id)
 
     admitted_candidates.sort(key=rank_key)
     below_bar_candidates.sort(key=lambda c: (-q_map.get(c.model_id, 0.0), _estimate_cost(c, tokens_in_est, tokens_out_est)))

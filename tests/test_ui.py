@@ -785,8 +785,9 @@ def test_light_mode_chat_css_variables() -> None:
 
 
 @respx.mock
-def test_scores_refresh_worker(qapp) -> None:
+def test_scores_refresh_worker(qapp, tmp_path: Path) -> None:
     """Verify ScoresRefreshWorker runs and emits finished_refresh signal."""
+    from modelmesh.core.storage import Storage
     from modelmesh.ui.workers import ScoresRefreshWorker
 
     page = {
@@ -799,7 +800,8 @@ def test_scores_refresh_worker(qapp) -> None:
         200, json=page, headers={"x-ratelimit-remaining": "90"}
     )
 
-    worker = ScoresRefreshWorker(api_key="test-key")
+    test_storage = Storage(tmp_path / "test_scores_worker.db")
+    worker = ScoresRefreshWorker(api_key="test-key", storage=test_storage)
     finished_data = []
     worker.finished_refresh.connect(finished_data.append)
 
@@ -814,6 +816,7 @@ def test_routing_tab_and_decision_worker(qapp, tmp_path: Path) -> None:
     """Verify RoutingTab configuration updates, persistence, and test worker."""
     from modelmesh.core.config.routing_config import load_routing_config
     from modelmesh.core.routing.base import get_strategy
+    from modelmesh.core.storage import Storage
     from modelmesh.ui.settings.routing_tab import RoutingTab
     from modelmesh.ui.workers import DecisionTestWorker
 
@@ -838,10 +841,12 @@ def test_routing_tab_and_decision_worker(qapp, tmp_path: Path) -> None:
         strat = get_strategy("smart_clef")
         assert pytest.approx(strat.config.need.bias, abs=0.001) == orig_bias + 0.20
 
-        # 3. Test DecisionTestWorker with mock provider
+        # 3. Test DecisionTestWorker with mock provider and isolated storage
+        test_storage = Storage(tmp_path / "test_decision_worker.db")
         worker = DecisionTestWorker(
             prompt_text="Hello world test",
             provider_id="mock",
+            storage=test_storage,
         )
         test_results = []
         worker.test_completed.connect(test_results.append)

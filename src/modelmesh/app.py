@@ -19,7 +19,7 @@ from modelmesh.core.keys import load_env
 from modelmesh.core.registry import load_default_registry
 from modelmesh.core.routing.router import Router
 from modelmesh.core.skills import SkillLoader
-from modelmesh.core.storage import Storage
+from modelmesh.core.storage import Storage, get_default_db_path
 from modelmesh.core.tools.builtin import create_builtin_registry
 from modelmesh.ui.main_window import MainWindow
 from modelmesh.ui.settings.tools_tab import get_app_settings
@@ -31,21 +31,7 @@ load_env()
 
 def get_db_path() -> Path:
     """Resolve SQLite database path under app data location."""
-    app_data = QStandardPaths.writableLocation(
-        QStandardPaths.StandardLocation.AppDataLocation
-    )
-    if not app_data:
-        app_dir = Path.cwd() / "data"
-    else:
-        app_dir = Path(app_data) / "modelmesh"
-
-    try:
-        app_dir.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        app_dir = Path.cwd() / "data"
-        app_dir.mkdir(parents=True, exist_ok=True)
-
-    return app_dir / "modelmesh.db"
+    return get_default_db_path()
 
 
 def main() -> None:
@@ -65,7 +51,7 @@ def main() -> None:
     registry = load_default_registry()
     db_path = get_db_path()
     storage = Storage(db_path=db_path)
-    router = Router(registry=registry)
+    router = Router(registry=registry, storage=storage)
 
     # Load persisted workspace folder
     settings = get_app_settings()
