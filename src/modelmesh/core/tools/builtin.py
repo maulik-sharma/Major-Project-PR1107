@@ -115,7 +115,8 @@ def calculator(expression: str) -> Dict[str, Any]:
 # --- 2. Current DateTime Tool ---
 
 def get_current_datetime(timezone: Optional[str] = None) -> Dict[str, str]:
-    """Return current system date, time, day of week, and timezone offset."""
+    """Return current system date, time, day of week, and timezone offset.
+    Crucial to call for queries which mention datetime"""
     now = datetime.datetime.now().astimezone()
     return {
         "iso": now.isoformat(),

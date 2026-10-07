@@ -6,6 +6,7 @@ from typing import Any, Dict, Iterator, List, Optional
 
 from modelmesh.core.cost import calculate_cost, estimate_request_tokens
 from modelmesh.core.errors import ProviderError, RoutingError
+from modelmesh.core.formatting import get_base_system_prompt
 from modelmesh.core.providers.base import get_adapter
 from modelmesh.core.registry import ModelRegistry
 from modelmesh.core.skills import SkillLoader, get_load_skill_tool
@@ -60,8 +61,11 @@ class ChatEngine:
         decision: Optional[RoutingDecision] = None
         candidates_to_try: List[Candidate] = []
 
-        # 1. Progressive Disclosure: Skills injection into system prompt
-        effective_system_prompt = request.system_prompt
+        # 1. Progressive Disclosure: Base prompt + user system prompt + skills injection
+        prompt_parts: List[str] = [get_base_system_prompt()]
+        if request.system_prompt:
+            prompt_parts.append(request.system_prompt)
+
         effective_tools = list(request.tools)
 
         if self.skill_loader is not None:
@@ -76,10 +80,7 @@ class ChatEngine:
 
             skills_index = self.skill_loader.format_system_prompt_index()
             if skills_index:
-                if effective_system_prompt:
-                    effective_system_prompt = f"{effective_system_prompt}\n\n{skills_index}"
-                else:
-                    effective_system_prompt = skills_index
+                prompt_parts.append(skills_index)
 
             # Check for explicit @<skill_name> mentions in the last message
             if request.messages:
@@ -91,16 +92,15 @@ class ChatEngine:
                         if skill.resources:
                             res_list = ", ".join(skill.resources.keys())
                             skill_instructions += f"\n(Sub-resources: {res_list}. Use 'load_skill' to inspect.)"
-                        if effective_system_prompt:
-                            effective_system_prompt = f"{effective_system_prompt}\n\n{skill_instructions}"
-                        else:
-                            effective_system_prompt = skill_instructions
+                        prompt_parts.append(skill_instructions)
 
             if effective_tools and self.tool_registry is not None:
                 if not any(t.name == "load_skill" for t in effective_tools):
                     spec = self.tool_registry.get_spec("load_skill")
                     if spec:
                         effective_tools.append(spec)
+
+        effective_system_prompt = "\n\n".join(p for p in prompt_parts if p)
 
         current_messages = list(request.messages)
         current_request = ChatRequest(

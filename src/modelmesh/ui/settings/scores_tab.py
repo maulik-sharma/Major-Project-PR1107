@@ -132,12 +132,12 @@ class ScoresTab(QWidget):
 
         # Header controls
         header_layout = QHBoxLayout()
-        self.refresh_btn = QPushButton("⟳ Refresh Scores")
+        self.refresh_btn = QPushButton("Refresh Scores")
         self.refresh_btn.setToolTip("Fetch latest score snapshot from Artificial Analysis")
         self.refresh_btn.clicked.connect(self._on_refresh_clicked)
         header_layout.addWidget(self.refresh_btn)
 
-        self.automatch_btn = QPushButton("⚡ Auto-match Slugs")
+        self.automatch_btn = QPushButton("Auto-match Slugs")
         self.automatch_btn.setToolTip("Auto-detect AA slugs for unlinked models")
         self.automatch_btn.clicked.connect(self._on_automatch_clicked)
         header_layout.addWidget(self.automatch_btn)

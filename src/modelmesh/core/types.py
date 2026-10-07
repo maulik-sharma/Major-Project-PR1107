@@ -382,8 +382,13 @@ class ModelScoresConfig:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> ModelScoresConfig:
         raw_manual = data.get("manual") or {}
+        raw_slug = data.get("aa_slug")
+        if isinstance(raw_slug, dict):
+            raw_slug = raw_slug.get("slug")
+        if raw_slug is not None:
+            raw_slug = str(raw_slug)
         return cls(
-            aa_slug=data.get("aa_slug"),
+            aa_slug=raw_slug,
             manual=ManualScoresConfig.from_dict(raw_manual),
         )
 

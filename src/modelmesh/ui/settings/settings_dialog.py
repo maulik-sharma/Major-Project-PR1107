@@ -83,5 +83,6 @@ class SettingsDialog(QDialog):
         self.models_tab.refresh()
         self.providers_tab.refresh()
         self.scores_tab.refresh()
+        self.routing_tab.refresh()
         self.settings_updated.emit()
 

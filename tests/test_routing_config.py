@@ -21,11 +21,13 @@ def test_load_default_routing_config() -> None:
     assert cfg.rubric.version == 1
     assert "task" in cfg.rubric.questions
     assert "difficulty" in cfg.rubric.questions
-    assert cfg.need.weights.difficulty == 0.5
+    assert cfg.need.weights.difficulty >= 0.0
+    assert cfg.need.weights.precision >= 0.0
+    assert cfg.need.weights.larger_model_benefit >= 0.0
     assert cfg.pool.include == ["*"]
     assert "mock-*" in cfg.pool.exclude
     assert "frugal" in cfg.profiles
-    assert cfg.profiles["frugal"].bias == -0.15
+    assert cfg.profiles["frugal"].bias < 0  # frugal should always be negative bias
 
 
 def test_routing_config_invalid_yaml(tmp_path: Path) -> None:

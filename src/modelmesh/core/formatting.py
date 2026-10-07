@@ -132,3 +132,21 @@ def _find_transition_split(text: str) -> Optional[int]:
                 if m.start() > 20 or "---" in m.group(0) or "===" in m.group(0):
                     return m.start()
     return None
+
+
+def get_base_system_prompt(now: Optional[datetime.datetime] = None) -> str:
+    """Generate the standard token-efficient base system prompt with dynamic temporal grounding."""
+    import datetime
+
+    current = now or datetime.datetime.now().astimezone()
+    date_str = current.strftime("%A, %B %d, %Y")
+    return (
+        f"You are ModelMesh, an intelligent AI assistant.\n"
+        f"Current date: {date_str}\n\n"
+        f"Guidelines:\n"
+        f"- Be direct, accurate, and concise. Avoid unnecessary conversational filler or pleasantries.\n"
+        f"- Format responses cleanly using Markdown, syntax-highlighted code blocks, and LaTeX for math ($...$ or $$...$$).\n"
+        f"- When addressing recent events, product releases, or time-sensitive topics, anchor your reasoning and search queries to the current date.\n"
+        f"- Proactively invoke available tools (such as web search, file operations, calculation, datetime, and skill inspection) whenever real-time information, workspace actions, or computation are required."
+    )
+

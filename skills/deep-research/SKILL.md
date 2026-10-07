@@ -8,8 +8,8 @@ description: Thorough research, source-backed synthesis, technical landscape ana
 Use this skill when conducting in-depth technical or competitive investigations requiring rigorous source verification and structured analytical reports.
 
 ## Workflow Phases
-1. **Scope & Query Formulation**: Decompose the user's objective into distinct sub-questions and key hypotheses.
-2. **Multi-Source Evidence Gathering**: Collect verified references, architectural benchmarks, or API documentation.
+1. **Scope & Query Formulation**: Decompose the user's objective into distinct sub-questions. For queries involving "latest", "newest", or recent developments, ensure search queries are calibrated against the current date/year rather than outdated training cutoffs.
+2. **Multi-Source Evidence Gathering**: Use search tools to collect verified references, architectural benchmarks, or primary documentation.
 3. **Synthesis & Triangulation**: Cross-reference claims across multiple sources to eliminate false assumptions.
 4. **Structured Delivery**: Produce an executive summary followed by technical breakdown, risk matrix, and strategic conclusions.
 

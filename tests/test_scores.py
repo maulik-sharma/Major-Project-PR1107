@@ -197,3 +197,10 @@ def test_aa_client_pagination() -> None:
     assert len(models) == 2
     assert ver == "4.3"
     assert rl == 97
+
+    # Verify fetch_snapshot helper
+    snapshot = client.fetch_snapshot()
+    assert isinstance(snapshot, ScoreSnapshot)
+    assert len(snapshot.models_by_slug) == 2
+    assert snapshot.index_version == "4.3"
+    assert snapshot.rate_limit_remaining == 97

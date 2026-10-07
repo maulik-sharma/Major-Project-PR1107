@@ -29,8 +29,15 @@ class SmartClefStrategy(Strategy):
         config: Optional[SmartRoutingConfig] = None,
         snapshot: Optional[ScoreSnapshot] = None,
     ) -> None:
-        self.config = config or load_routing_config()
+        self._custom_config = config
         self.snapshot = snapshot
+
+    @property
+    def config(self) -> SmartRoutingConfig:
+        """Return explicit injected config or dynamically reload latest config from disk."""
+        if self._custom_config is not None:
+            return self._custom_config
+        return load_routing_config()
 
     def rank(
         self,

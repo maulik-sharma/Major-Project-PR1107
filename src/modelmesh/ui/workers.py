@@ -229,13 +229,16 @@ class DecisionTestWorker(QThread):
             )
 
             self.test_completed.emit({
-                "decision_id": result.decision_id,
                 "source": result.source,
                 "provider_id": result.provider_id,
+                "model": result.model,
                 "latency_ms": result.latency_ms,
-                "cached": result.cached,
+                "cached": result.source == "cache",
                 "answers": result.answers,
-                "error": result.error,
+                "usage": {
+                    "input_tokens": result.usage.input_tokens,
+                    "output_tokens": result.usage.output_tokens,
+                },
             })
         except Exception as exc:
             self.error_occurred.emit(str(exc))

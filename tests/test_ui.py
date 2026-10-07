@@ -3,6 +3,7 @@
 import os
 import sys
 import pytest
+import respx
 from pathlib import Path
 
 # Ensure offscreen rendering and disable sandboxing for test runner
@@ -781,6 +782,79 @@ def test_light_mode_chat_css_variables() -> None:
     assert ".user-bubble" in css_content
     assert ".assistant-content" in css_content
     assert "body.light-theme .user-bubble" in css_content
+
+
+@respx.mock
+def test_scores_refresh_worker(qapp) -> None:
+    """Verify ScoresRefreshWorker runs and emits finished_refresh signal."""
+    from modelmesh.ui.workers import ScoresRefreshWorker
+
+    page = {
+        "tier": "free",
+        "intelligence_index_version": "4.3",
+        "pagination": {"page": 1, "has_more": False},
+        "data": [{"slug": "worker-m1", "name": "Worker Model 1"}],
+    }
+    respx.get("https://artificialanalysis.ai/api/v2/language/models/free?page=1").respond(
+        200, json=page, headers={"x-ratelimit-remaining": "90"}
+    )
+
+    worker = ScoresRefreshWorker(api_key="test-key")
+    finished_data = []
+    worker.finished_refresh.connect(finished_data.append)
+
+    worker.run()
+
+    assert len(finished_data) == 1
+    assert finished_data[0]["models_count"] == 1
+    assert finished_data[0]["index_version"] == "4.3"
+
+
+def test_routing_tab_and_decision_worker(qapp, tmp_path: Path) -> None:
+    """Verify RoutingTab configuration updates, persistence, and test worker."""
+    from modelmesh.core.config.routing_config import load_routing_config
+    from modelmesh.core.routing.base import get_strategy
+    from modelmesh.ui.settings.routing_tab import RoutingTab
+    from modelmesh.ui.workers import DecisionTestWorker
+
+    tab = RoutingTab()
+    orig_bias = tab.routing_config.need.bias
+    orig_slack = tab.routing_config.need.slack
+
+    try:
+        events = []
+        tab.config_changed.connect(lambda: events.append(True))
+
+        # 1. Update bias and slack
+        tab.bias_spin.setValue(orig_bias + 0.20)
+        tab.slack_spin.setValue(orig_slack + 0.05)
+        assert len(events) >= 2
+
+        cfg = load_routing_config()
+        assert pytest.approx(cfg.need.bias, abs=0.001) == orig_bias + 0.20
+        assert pytest.approx(cfg.need.slack, abs=0.001) == orig_slack + 0.05
+
+        # 2. Check that strategy dynamically reads updated bias
+        strat = get_strategy("smart_clef")
+        assert pytest.approx(strat.config.need.bias, abs=0.001) == orig_bias + 0.20
+
+        # 3. Test DecisionTestWorker with mock provider
+        worker = DecisionTestWorker(
+            prompt_text="Hello world test",
+            provider_id="mock",
+        )
+        test_results = []
+        worker.test_completed.connect(test_results.append)
+        worker.run()
+
+        assert len(test_results) == 1
+        res = test_results[0]
+        assert "answers" in res
+        assert "difficulty" in res["answers"]
+        assert res["source"] in ("mock", "heuristic", "cache", "clef")
+    finally:
+        tab.bias_spin.setValue(orig_bias)
+        tab.slack_spin.setValue(orig_slack)
 
 
 

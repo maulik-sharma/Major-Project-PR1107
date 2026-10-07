@@ -114,10 +114,14 @@ def select_smart_candidate(
             raw_scores[c.model_id] = val
             scored_candidates.append(c)
 
-    # Fallback if no models scored: treat all pool_eligible as equal quality
+    # Fallback if no models scored: use tier-based default scores so that the
+    # quality bar can still differentiate cheap vs mid vs premium models.
     if not scored_candidates:
         scored_candidates = list(pool_eligible)
-        raw_scores = {c.model_id: 50.0 for c in pool_eligible}
+        raw_scores = {
+            c.model_id: tier_default_scores.get(c.tier, 40.0)
+            for c in pool_eligible
+        }
 
     # 3. Min-max normalize quality q in [0.0, 1.0]
     q_map = normalize_scores_to_quality(raw_scores)

@@ -77,6 +77,13 @@ class DecisionService:
                 logger.warning(f"Could not initialize decision provider '{pcfg.id}': {exc}")
         if "heuristic" not in self._providers:
             self._providers["heuristic"] = HeuristicDecisionProvider()
+        if "mock" not in self._providers and "decision-mock" not in self._providers:
+            from modelmesh.core.routing.smart.decision.mock import MockDecisionProvider
+            self._providers["mock"] = MockDecisionProvider()
+        if "decision-mock" in self._providers and "mock" not in self._providers:
+            self._providers["mock"] = self._providers["decision-mock"]
+        elif "mock" in self._providers and "decision-mock" not in self._providers:
+            self._providers["decision-mock"] = self._providers["mock"]
 
     def _get_breaker(self, provider_id: str) -> CircuitBreaker:
         if provider_id not in self._circuit_breakers:
@@ -175,7 +182,8 @@ class DecisionService:
                         answers=res.answers,
                         router_latency_ms=int(res.latency_ms),
                     )
-                res.source = "clef"
+                if not res.source:
+                    res.source = "clef" if active_id == "clef-flash" else active_id
                 return res
 
             except ProviderError as exc:

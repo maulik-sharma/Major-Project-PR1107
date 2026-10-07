@@ -39,6 +39,10 @@ class Router:
             self._decision_service = DecisionService(config=cfg, storage=self.storage)
         return self._decision_service
 
+    def reload_config(self) -> None:
+        """Reset cached decision service to reload updated routing configuration."""
+        self._decision_service = None
+
     def route(
         self,
         request: ChatRequest,

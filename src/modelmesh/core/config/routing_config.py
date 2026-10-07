@@ -101,7 +101,7 @@ class SmartRoutingConfig(BaseModel):
         }
     )
     pool: PoolConfig = Field(default_factory=PoolConfig)
-    unscored_policy: Literal["exclude", "tier_default"] = "exclude"
+    unscored_policy: Literal["exclude", "tier_default"] = "tier_default"
     stickiness: StickinessConfig = Field(default_factory=StickinessConfig)
     profiles: Dict[str, ProfileConfig] = Field(
         default_factory=lambda: {

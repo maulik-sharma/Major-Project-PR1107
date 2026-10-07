@@ -204,14 +204,26 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage("Ready")
 
     def _populate_strategy_combo(self) -> None:
-        """Populate the routing strategy selector."""
-        self.strategy_combo.clear()
-        self.strategy_combo.addItem("Auto · Smart", "smart_clef")
-        self.strategy_combo.addItem("Auto: Cheapest First", "cheapest_first")
-        self.strategy_combo.addItem("Auto: Expensive First", "expensive_first")
-        self.strategy_combo.addItem("Auto: Random Baseline", "random")
-        self.strategy_combo.addItem("Manual Selection", "manual")
+        """Populate the routing strategy selector from persistent settings."""
+        settings = get_app_settings()
+        saved_strat = str(settings.value("router/strategy", "smart_clef"))
 
+        self.strategy_combo.blockSignals(True)
+        try:
+            self.strategy_combo.clear()
+            self.strategy_combo.addItem("Auto · Smart", "smart_clef")
+            self.strategy_combo.addItem("Auto: Cheapest First", "cheapest_first")
+            self.strategy_combo.addItem("Auto: Expensive First", "expensive_first")
+            self.strategy_combo.addItem("Auto: Random Baseline", "random")
+            self.strategy_combo.addItem("Manual Selection", "manual")
+
+            idx = self.strategy_combo.findData(saved_strat)
+            if idx >= 0:
+                self.strategy_combo.setCurrentIndex(idx)
+            else:
+                self.strategy_combo.setCurrentIndex(0)
+        finally:
+            self.strategy_combo.blockSignals(False)
 
     def _populate_model_combo(self) -> None:
         """Fill model selector dropdown with available models and endpoints."""
@@ -232,8 +244,9 @@ class MainWindow(QMainWindow):
                     )
 
     def _on_strategy_changed(self) -> None:
-        """Toggle model combo box enabled state based on selected strategy."""
-        strategy = self.strategy_combo.currentData() or "cheapest_first"
+        """Toggle model combo box enabled state based on selected strategy and persist preference."""
+        strategy = self.strategy_combo.currentData() or "smart_clef"
+        get_app_settings().setValue("router/strategy", strategy)
         is_manual = (strategy == "manual")
         self.model_combo.setEnabled(is_manual)
         self.model_label.setEnabled(is_manual)
@@ -407,7 +420,7 @@ class MainWindow(QMainWindow):
         )
 
         # Determine routing mode from dropdowns
-        strategy_name = self.strategy_combo.currentData() or "cheapest_first"
+        strategy_name = self.strategy_combo.currentData() or "smart_clef"
         pinned_model_id = None
         pinned_endpoint_id = None
 
@@ -621,6 +634,8 @@ class MainWindow(QMainWindow):
         self._populate_model_combo()
         self._on_skills_changed()
         self.skills_view.refresh_skills()
+        if hasattr(self.router, "reload_config"):
+            self.router.reload_config()
 
     def _open_usage_dialog(self) -> None:
         dlg = UsageDialog(storage=self.storage, parent=self)

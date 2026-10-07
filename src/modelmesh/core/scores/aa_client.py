@@ -143,3 +143,21 @@ class ArtificialAnalysisClient:
         finally:
             if owns_client:
                 http_client.close()
+
+    def fetch_snapshot(
+        self,
+        client: Optional[httpx.Client] = None,
+    ) -> Any:
+        """Fetch all models and return a complete ScoreSnapshot instance.
+
+        Returns:
+            ScoreSnapshot populated with current models and index metadata.
+        """
+        from modelmesh.core.scores.snapshots import ScoreSnapshot
+
+        models, index_version, remaining = self.fetch_all_models(client=client)
+        return ScoreSnapshot.from_raw(
+            models_list=models,
+            index_version=index_version,
+            rate_limit_remaining=remaining,
+        )

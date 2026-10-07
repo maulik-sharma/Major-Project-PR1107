@@ -85,3 +85,17 @@ def test_legacy_blank_content_recovery() -> None:
     assert "Planning steps..." in reasoning
     assert "**Final Score: 100/100**" in content
     assert "Everything passed." in content
+
+
+def test_get_base_system_prompt() -> None:
+    import datetime
+    from modelmesh.core.formatting import get_base_system_prompt
+
+    fixed_time = datetime.datetime(2026, 10, 6, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    prompt = get_base_system_prompt(now=fixed_time)
+
+    assert "Current date: Tuesday, October 06, 2026" in prompt
+    assert "You are ModelMesh, an intelligent AI assistant." in prompt
+    assert "Markdown" in prompt
+    assert "tools" in prompt.lower()
+
