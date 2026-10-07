@@ -183,6 +183,12 @@ class ScoresTab(QWidget):
         )
         footer_layout.addWidget(self.attribution_label)
 
+        self.legend_label = QLabel("•  (M) Manual override  •  (I) Inherited from Intelligence")
+        self.legend_label.setStyleSheet(
+            "color: var(--text-muted); font-size: 11.5px;"
+        )
+        footer_layout.addWidget(self.legend_label)
+
         footer_layout.addStretch()
 
         self.warnings_label = QLabel("")
@@ -231,22 +237,48 @@ class ScoresTab(QWidget):
                 int_val += " (M)"
             int_item = QTableWidgetItem(int_val)
             int_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            if m.scores.manual.intelligence is not None:
+                int_item.setToolTip("Manual override configured in providers.yaml")
+            elif eff.intelligence is not None:
+                int_item.setToolTip("Artificial Analysis Intelligence Index")
             self.table.setItem(row, 2, int_item)
 
             # 3. Coding
-            code_val = f"{eff.coding:.1f}" if eff.coding is not None else "—"
-            if m.scores.manual.coding is not None:
-                code_val += " (M)"
+            if eff.coding is not None:
+                if m.scores.manual.coding is not None:
+                    code_val = f"{eff.coding:.1f} (M)"
+                    code_tip = "Manual override configured in providers.yaml"
+                elif eff.is_coding_inherited:
+                    code_val = f"{eff.coding:.1f} (I)"
+                    code_tip = "Inherited from Intelligence Index (not separately benchmarked by Artificial Analysis)"
+                else:
+                    code_val = f"{eff.coding:.1f}"
+                    code_tip = "Artificial Analysis Coding Index (SWE-bench / HumanEval composite)"
+            else:
+                code_val = "—"
+                code_tip = "Unscored"
             code_item = QTableWidgetItem(code_val)
             code_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            code_item.setToolTip(code_tip)
             self.table.setItem(row, 3, code_item)
 
             # 4. Agentic
-            agent_val = f"{eff.agentic:.1f}" if eff.agentic is not None else "—"
-            if m.scores.manual.agentic is not None:
-                agent_val += " (M)"
+            if eff.agentic is not None:
+                if m.scores.manual.agentic is not None:
+                    agent_val = f"{eff.agentic:.1f} (M)"
+                    agent_tip = "Manual override configured in providers.yaml"
+                elif eff.is_agentic_inherited:
+                    agent_val = f"{eff.agentic:.1f} (I)"
+                    agent_tip = "Inherited from Intelligence Index (not separately benchmarked by Artificial Analysis)"
+                else:
+                    agent_val = f"{eff.agentic:.1f}"
+                    agent_tip = "Artificial Analysis Agentic Tool-Use Index"
+            else:
+                agent_val = "—"
+                agent_tip = "Unscored"
             agent_item = QTableWidgetItem(agent_val)
             agent_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            agent_item.setToolTip(agent_tip)
             self.table.setItem(row, 4, agent_item)
 
             # 5. Status
@@ -327,15 +359,18 @@ class ScoresTab(QWidget):
             QMessageBox.warning(self, "No Snapshot", "Please refresh scores snapshot first.")
             return
 
-        available_slugs = list(snapshot.models_by_slug.keys())
+        raw_models = snapshot.raw_payload.get("models") or list(snapshot.models_by_slug.values())
         updated = 0
 
         for model in self.registry.models():
             if not model.scores.aa_slug:
-                suggs = suggest_model_slugs(model.id, available_slugs, limit=1)
+                suggs = suggest_model_slugs(model.id, raw_models, limit=1)
                 if suggs:
-                    model.scores.aa_slug = suggs[0]
-                    updated += 1
+                    top_match = suggs[0]
+                    slug_val = top_match.get("slug") if isinstance(top_match, dict) else str(top_match)
+                    if slug_val:
+                        model.scores.aa_slug = slug_val
+                        updated += 1
 
         if updated > 0:
             self.registry.save_to_file(get_default_config_dir() / "providers.yaml")

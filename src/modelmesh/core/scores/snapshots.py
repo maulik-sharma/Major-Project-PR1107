@@ -79,6 +79,8 @@ class EffectiveScores:
     is_manual: bool = False
     is_unscored: bool = True
     aa_slug: Optional[str] = None
+    is_coding_inherited: bool = False
+    is_agentic_inherited: bool = False
 
 
 def resolve_effective_scores(
@@ -90,7 +92,8 @@ def resolve_effective_scores(
     Priority:
     1. Manual overrides in model.scores.manual
     2. Linked record in score snapshot via model.scores.aa_slug
-    3. Unscored
+    3. Inheritance fallback (e.g. coding/agentic fallback to intelligence if unbenchmarked)
+    4. Unscored
     """
     manual = model.scores.manual
     has_any_manual = (
@@ -103,11 +106,16 @@ def resolve_effective_scores(
     code = manual.coding
     agent = manual.agentic
     elo = manual.arena_text_elo
-    source = "manual" if has_any_manual else "unscored"
+
+    aa_slug = model.scores.aa_slug
+    if isinstance(aa_slug, dict):
+        aa_slug = aa_slug.get("slug")
+    if aa_slug is not None and not isinstance(aa_slug, str):
+        aa_slug = str(aa_slug)
 
     aa_record: Optional[Dict[str, Any]] = None
-    if model.scores.aa_slug and snapshot and model.scores.aa_slug in snapshot.models_by_slug:
-        aa_record = snapshot.models_by_slug[model.scores.aa_slug]
+    if aa_slug and snapshot and aa_slug in snapshot.models_by_slug:
+        aa_record = snapshot.models_by_slug[aa_slug]
         evals = aa_record.get("evaluations", {})
         if intel is None and evals.get("artificial_analysis_intelligence_index") is not None:
             intel = float(evals["artificial_analysis_intelligence_index"])
@@ -115,6 +123,19 @@ def resolve_effective_scores(
             code = float(evals["artificial_analysis_coding_index"])
         if agent is None and evals.get("artificial_analysis_agentic_index") is not None:
             agent = float(evals["artificial_analysis_agentic_index"])
+
+    is_coding_inherited = False
+    is_agentic_inherited = False
+
+    # Fallback / inheritance: when specific sub-indexes (coding / agentic) are not
+    # separately evaluated by Artificial Analysis, inherit the overall intelligence score.
+    if code is None and intel is not None:
+        code = intel
+        is_coding_inherited = True
+
+    if agent is None and intel is not None:
+        agent = intel
+        is_agentic_inherited = True
 
     is_unscored = (intel is None and code is None and agent is None)
     if is_unscored:
@@ -134,7 +155,9 @@ def resolve_effective_scores(
         source=source,
         is_manual=has_any_manual,
         is_unscored=is_unscored,
-        aa_slug=model.scores.aa_slug,
+        aa_slug=aa_slug,
+        is_coding_inherited=is_coding_inherited,
+        is_agentic_inherited=is_agentic_inherited,
     )
 
 

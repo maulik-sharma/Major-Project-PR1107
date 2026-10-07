@@ -78,6 +78,56 @@ def test_resolve_effective_scores_priority() -> None:
     assert eff3.source == "unscored"
 
 
+def test_resolve_effective_scores_inheritance() -> None:
+    """Verify models with null coding/agentic indices properly inherit intelligence score."""
+    models_data = [
+        {
+            "slug": "flagship-general",
+            "name": "Flagship General (e.g. Opus 5.5)",
+            "evaluations": {
+                "artificial_analysis_intelligence_index": 57.6,
+                "artificial_analysis_coding_index": None,
+                "artificial_analysis_agentic_index": None,
+            },
+        }
+    ]
+    snapshot = ScoreSnapshot.from_raw(
+        models_list=models_data,
+        index_version="4.3",
+    )
+
+    # 1. Model with null coding/agentic from snapshot inherits intelligence
+    m1 = ModelConfig(
+        id="flagship-general",
+        display_name="Flagship General",
+        scores=ModelScoresConfig(aa_slug="flagship-general"),
+    )
+    eff1 = resolve_effective_scores(m1, snapshot)
+    assert eff1.is_unscored is False
+    assert eff1.intelligence == 57.6
+    assert eff1.coding == 57.6
+    assert eff1.agentic == 57.6
+    assert eff1.is_coding_inherited is True
+    assert eff1.is_agentic_inherited is True
+    assert eff1.source == "snapshot"
+
+    # 2. Model with manual coding override overrides inheritance
+    m2 = ModelConfig(
+        id="flagship-general-custom",
+        display_name="Flagship General Custom",
+        scores=ModelScoresConfig(
+            aa_slug="flagship-general",
+            manual=ManualScoresConfig(coding=90.0),
+        ),
+    )
+    eff2 = resolve_effective_scores(m2, snapshot)
+    assert eff2.coding == 90.0
+    assert eff2.is_coding_inherited is False
+    assert eff2.agentic == 57.6
+    assert eff2.is_agentic_inherited is True
+    assert eff2.source == "manual"
+
+
 def test_score_store_sqlite_roundtrip(tmp_path: Path) -> None:
     """Verify persisting and retrieving snapshots from SQLite."""
     storage = Storage(tmp_path / "test_modelmesh.db")

@@ -64,18 +64,25 @@ def handle_scores_command(args: argparse.Namespace, storage: Storage) -> int:
         else:
             print("Notice: No snapshot found in database. Run 'modelmesh scores refresh' to fetch from AA.")
 
-        print(f"{'Model ID':<22} | {'Linked AA Slug':<30} | {'Intel':<6} | {'Code':<6} | {'Agent':<6} | {'Status'}")
-        print("-" * 90)
+        print(f"{'Model ID':<22} | {'Linked AA Slug':<30} | {'Intel':<7} | {'Code':<7} | {'Agent':<7} | {'Status'}")
+        print("-" * 93)
         for m in registry.models():
             eff = resolve_effective_scores(m, snapshot)
             intel_s = f"{eff.intelligence:.1f}" if eff.intelligence is not None else "-"
-            code_s = f"{eff.coding:.1f}" if eff.coding is not None else "-"
-            agent_s = f"{eff.agentic:.1f}" if eff.agentic is not None else "-"
+            if eff.coding is not None:
+                code_s = f"{eff.coding:.1f}*" if eff.is_coding_inherited else f"{eff.coding:.1f}"
+            else:
+                code_s = "-"
+            if eff.agentic is not None:
+                agent_s = f"{eff.agentic:.1f}*" if eff.is_agentic_inherited else f"{eff.agentic:.1f}"
+            else:
+                agent_s = "-"
             slug_s = (m.scores.aa_slug or "-")[:28]
             status = eff.source
-            print(f"{m.id:<22} | {slug_s:<30} | {intel_s:<6} | {code_s:<6} | {agent_s:<6} | {status}")
+            print(f"{m.id:<22} | {slug_s:<30} | {intel_s:<7} | {code_s:<7} | {agent_s:<7} | {status}")
 
-        print(f"\n{ATTRIBUTION_TEXT}\n")
+        print(f"\n{ATTRIBUTION_TEXT}")
+        print("Legend: * = Inherited from Intelligence Index (sub-index not separately benchmarked by AA)\n")
         return 0
 
     elif args.scores_action == "auto-match":
