@@ -64,7 +64,7 @@ class CatalogStartupCheck(QObject):
             self._button.setFlat(True)
             self._button.clicked.connect(self._review)
             self.status_bar.addPermanentWidget(self._button)
-        self._button.setText(f"⟳ {len(report.changes)} provider model update(s): review")
+        self._button.setText(f"{len(report.changes)} provider model update(s) available. Review")
         self._button.show()
 
     def _review(self) -> None:

@@ -141,7 +141,7 @@ class ScoresTab(QWidget):
         parts = []
         if aa:
             day = datetime.datetime.fromtimestamp(aa.fetched_at).strftime("%Y-%m-%d")
-            parts.append(f"AA: index v{aa.index_version or '?'} ({day})" + ("  ⚠ older index kept" if note else ""))
+            parts.append(f"AA: index v{aa.index_version or '?'} ({day})" + (" (older index kept)" if note else ""))
         else:
             parts.append("AA: no snapshot")
         parts.append(f"Arena: {arena.index_version or '?'}" if arena else "Arena: no snapshot")
@@ -188,9 +188,9 @@ class ScoresTab(QWidget):
 
         warnings = []
         if unscored:
-            warnings.append(f"⚠ {unscored} model(s) unscored")
+            warnings.append(f"{unscored} model(s) unscored.")
         if self._stale:
-            warnings.append(f"⚠ {len(self._stale)} link(s) to check")
+            warnings.append(f"{len(self._stale)} link(s) to check.")
         self.warnings_label.setText("   ".join(warnings))
 
     @staticmethod

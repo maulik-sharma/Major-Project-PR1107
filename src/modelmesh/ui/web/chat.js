@@ -366,7 +366,7 @@ function add_user_message(msgId, text, parts = []) {
     } else if (p.name) {
       const chip = document.createElement('div');
       chip.className = 'user-attachment-chip';
-      chip.textContent = `📎 ${p.name}`;
+      chip.textContent = p.name;
       bubble.appendChild(chip);
     }
   });

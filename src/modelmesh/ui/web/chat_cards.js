@@ -202,7 +202,7 @@ function buildInsightsHtml(meta) {
     const rows = r.candidates.map(c => {
       const chosen = c.model_id === meta.model_id;
       const unscored = c.q === null || c.q === undefined;
-      const status = chosen ? '✓ Selected'
+      const status = chosen ? 'Selected'
         : (c.admitted ? 'Admitted' : (unscored ? (c.note || 'No score') : 'Below bar'));
       return `<tr class="${chosen ? 'chosen-row' : ''}"><td>${escapeHtml(c.model_id)}</td>` +
         `<td>${escapeHtml(fmtNum(c.q))}</td><td>${escapeHtml(status)}</td></tr>`;
@@ -224,7 +224,7 @@ function buildInsightsHtml(meta) {
 
   return `
     <div class="insights-header">
-      <span>⚡ Smart Routing Insights</span>
+      <span>Routing decision</span>
       <span class="insights-subtle">${escapeHtml(source)} · ${escapeHtml(latency)}</span>
     </div>
     <div class="insights-grid">${cards}</div>
@@ -268,7 +268,7 @@ function renderFinishedFooter(msgId, meta) {
     btn.addEventListener('click', handler);
     footer.appendChild(btn);
   };
-  if (hasInsights) addButton('insights-btn', '⚡ Insights', 'Toggle Smart Routing Insights', () => toggleInsights(msgId));
+  if (hasInsights) addButton('insights-btn', 'Details', 'Show how this model was chosen', () => toggleInsights(msgId));
   addButton('action-btn', 'Copy', 'Copy reply', () => copyMessageText(msgId));
   addButton('action-btn', 'Retry', 'Retry generation', () => regenerateMessage(msgId));
 

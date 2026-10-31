@@ -52,7 +52,7 @@ class AddEndpointDialog(QDialog):
         self.model_combo = QComboBox()
         for m in existing_models:
             self.model_combo.addItem(f"{m.display_name} ({m.id})", m.id)
-        self.model_combo.addItem("➕ Create New Logical Model...", "__new__")
+        self.model_combo.addItem("Create New Logical Model...", "__new__")
         self.model_combo.currentIndexChanged.connect(self._on_model_selection_changed)
         self.form.addRow("Logical Model:", self.model_combo)
 
