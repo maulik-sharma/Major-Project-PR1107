@@ -178,6 +178,10 @@ class ScoreStore:
             fetched_at=snapshot.fetched_at,
         )
 
+    def get_latest_snapshot_id(self, source: str = "artificial_analysis") -> Optional[str]:
+        """Return a cheap marker that changes whenever a newer snapshot is stored."""
+        return self.storage.get_newest_score_snapshot_id(source=source)
+
     def get_latest_snapshot(self, source: str = "artificial_analysis") -> Optional[ScoreSnapshot]:
         """Fetch the most recent snapshot from the database."""
         row = self.storage.get_latest_score_snapshot(source=source)

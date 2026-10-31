@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+import logging
+from typing import Any, Dict, List, Optional, Tuple
 
 from modelmesh.core.errors import RoutingError
 from modelmesh.core.registry import ModelRegistry
@@ -13,7 +14,12 @@ from modelmesh.core.routing.features import (
     filter_eligible_candidates,
 )
 from modelmesh.core.routing.health import EndpointHealthTracker
+from modelmesh.core.routing.smart.decision.base import DecisionRequest
+from modelmesh.core.routing.smart.decision.heuristic import HeuristicDecisionProvider
+from modelmesh.core.routing.smart.state_builder import latest_user_text
 from modelmesh.core.types import Candidate, ChatRequest, RoutingDecision
+
+logger = logging.getLogger(__name__)
 
 
 class Router:
@@ -32,6 +38,7 @@ class Router:
         self.storage = storage
         self.safety_margin_tokens = safety_margin_tokens
         self._decision_service = decision_service
+        self._snapshot_cache: Optional[Tuple[str, Any]] = None
 
     @property
     def decision_service(self) -> Any:
@@ -51,6 +58,47 @@ class Router:
         self.health_tracker.cooldown_seconds = cooldown_seconds
         self.safety_margin_tokens = safety_margin_tokens
         self.health_tracker.clear_blacklist()
+
+    def _decide(self, request: ChatRequest) -> Dict[str, Any]:
+        """Run the decision service; never raises (Rule 17)."""
+        try:
+            res = self.decision_service.get_decision(
+                messages=request.messages,
+                tools_enabled=bool(request.tools),
+                tools_count=len(request.tools),
+            )
+        except Exception as exc:  # e.g. routing.yaml unreadable while building the service
+            logger.warning("Decision service unavailable: %s. Using heuristic fallback.", exc)
+            res = HeuristicDecisionProvider().decide(
+                DecisionRequest(state="", questions={}, latest_text=latest_user_text(request.messages))
+            )
+            res.source = "heuristic_fallback"
+            res.error = str(exc)
+        return {
+            "answers": res.answers,
+            "source": res.source,
+            "provider_id": res.provider_id,
+            "model": res.model,
+            "latency_ms": res.latency_ms,
+            "usage": res.usage.to_dict(),
+            "error": res.error,
+        }
+
+    def _latest_snapshot(self) -> Optional[Any]:
+        """Return the newest score snapshot, parsing it only when its id changes."""
+        from modelmesh.core.scores.snapshots import ScoreStore
+
+        try:
+            store = ScoreStore(self.storage)
+            latest_id = store.get_latest_snapshot_id()
+            if latest_id is None:
+                return None
+            if self._snapshot_cache is None or self._snapshot_cache[0] != latest_id:
+                self._snapshot_cache = (latest_id, store.get_latest_snapshot())
+            return self._snapshot_cache[1]
+        except Exception as exc:
+            logger.warning("Could not load score snapshot: %s", exc)
+            return None
 
     def route(
         self,
@@ -106,25 +154,10 @@ class Router:
                 if "smart_decision" in kwargs:
                     features["smart_decision"] = kwargs["smart_decision"]
                 else:
-                    dec_res = self.decision_service.get_decision(
-                        messages=request.messages,
-                        tools_enabled=bool(request.tools),
-                        tools_count=len(request.tools),
-                    )
-                    features["smart_decision"] = {
-                        "answers": dec_res.answers,
-                        "source": dec_res.source,
-                        "provider_id": dec_res.provider_id,
-                        "model": dec_res.model,
-                        "latency_ms": dec_res.latency_ms,
-                        "usage": dec_res.usage.to_dict(),
-                    }
+                    features["smart_decision"] = self._decide(request)
 
-            # Fetch latest snapshot from score store if available
             if self.storage is not None and "snapshot_override" not in kwargs:
-                from modelmesh.core.scores.snapshots import ScoreStore
-                store = ScoreStore(self.storage)
-                kwargs["snapshot_override"] = store.get_latest_snapshot()
+                kwargs["snapshot_override"] = self._latest_snapshot()
 
         decision = strategy.rank(
             eligible_candidates=eligible,

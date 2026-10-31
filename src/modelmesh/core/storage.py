@@ -585,6 +585,16 @@ class Storage:
                 conn.commit()
         return sid
 
+    def get_newest_score_snapshot_id(self, source: str = "artificial_analysis") -> Optional[str]:
+        """Return the id of the newest snapshot row (cheap; payload is not parsed)."""
+        with self._lock:
+            with self._get_connection() as conn:
+                row = conn.execute(
+                    "SELECT id FROM score_snapshots WHERE source = ? ORDER BY fetched_at DESC LIMIT 1",
+                    (source,),
+                ).fetchone()
+        return row[0] if row else None
+
     def get_latest_score_snapshot(self, source: str = "artificial_analysis") -> Optional[Dict[str, Any]]:
         with self._lock:
             with self._get_connection() as conn:

@@ -18,24 +18,40 @@ class DecisionRequest:
     questions: Dict[str, Dict[str, Any]]
     timeout_s: float = 1.5
     images: Optional[List[str]] = None
-    model: str = "clef-flash"
-    provider_id: str = "clef-flash"
+    model: str = ""
+    provider_id: str = ""
+    # Local-only signals for the heuristic; never sent to a remote provider.
+    latest_text: Optional[str] = None
+    context: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class DecisionResult:
-    """Normalized response produced by a decision provider."""
+    """Normalized response produced by a decision provider.
+
+    ``source`` is required so a new provider can never be mislabelled:
+    "clef", "heuristic", "heuristic_fallback", "cache" or "mock".
+    """
     answers: Dict[str, Any]
+    source: str
     usage: Usage = field(default_factory=Usage)
     latency_ms: float = 0.0
     provider_id: str = "heuristic"
-    model: str = "clef-flash"
+    model: str = ""
     raw_response: Dict[str, Any] = field(default_factory=dict)
-    source: str = "clef"  # "clef", "heuristic", "heuristic_fallback", "cache", "mock"
+    error: Optional[str] = None  # why a fallback happened, if it did
 
 
 class DecisionProvider(ABC):
     """Abstract protocol for fast System One decision models."""
+
+    #: True if the provider sends the state to a remote service (privacy switch applies).
+    remote: bool = False
+
+    @classmethod
+    def from_config(cls, config: Any) -> "DecisionProvider":
+        """Build the provider from its ``DecisionProviderConfig``. Override if it needs settings."""
+        return cls()
 
     @abstractmethod
     def decide(self, request: DecisionRequest) -> DecisionResult:

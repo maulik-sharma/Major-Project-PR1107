@@ -845,7 +845,7 @@ def test_routing_tab_and_decision_worker(qapp, tmp_path: Path) -> None:
         test_storage = Storage(tmp_path / "test_decision_worker.db")
         worker = DecisionTestWorker(
             prompt_text="Hello world test",
-            provider_id="mock",
+            provider_id="decision-mock",
             storage=test_storage,
         )
         test_results = []
@@ -856,7 +856,7 @@ def test_routing_tab_and_decision_worker(qapp, tmp_path: Path) -> None:
         res = test_results[0]
         assert "answers" in res
         assert "difficulty" in res["answers"]
-        assert res["source"] in ("mock", "heuristic", "cache", "clef")
+        assert res["source"] == "mock"
     finally:
         tab.bias_spin.setValue(orig_bias)
         tab.slack_spin.setValue(orig_slack)

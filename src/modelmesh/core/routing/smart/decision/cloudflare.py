@@ -19,18 +19,34 @@ from modelmesh.core.types import Usage
 
 @register_decision_provider("cloudflare_decision")
 class CloudflareDecisionAdapter(DecisionProvider):
-    """Adapter for Cloudflare Workers AI Clef-flash decision model."""
+    """Adapter for Cloudflare Workers AI Clef decision models.
+
+    Configured from ``routing.yaml``: ``auth_env`` lists the account-id variable
+    then the API-token variable; ``base_url`` may contain ``{account_id}``.
+    """
+
+    remote = True
 
     def __init__(
         self,
         account_id: Optional[str] = None,
         auth_token: Optional[str] = None,
         client: Optional[httpx.Client] = None,
+        base_url: Optional[str] = None,
+        auth_env: Optional[List[str]] = None,
     ) -> None:
         load_env()
-        self.account_id = account_id or get_env_key("CLOUDFLARE_ACCOUNT_ID")
-        self.auth_token = auth_token or get_env_key("CLOUDFLARE_AUTH_TOKEN")
+        account_var, token_var = (list(auth_env or []) + ["", ""])[:2]
+        self.account_id = account_id or (get_env_key(account_var) if account_var else None)
+        self.auth_token = auth_token or (get_env_key(token_var) if token_var else None)
+        self.base_url = (base_url or "").rstrip("/")
+        self._auth_env = [v for v in (account_var, token_var) if v]
         self._client = client
+
+    @classmethod
+    def from_config(cls, config: Any) -> "CloudflareDecisionAdapter":
+        """Build from a ``DecisionProviderConfig`` (auth_env + base_url)."""
+        return cls(base_url=config.base_url, auth_env=config.auth_env)
 
     def _format_questions(self, questions: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
         """Ensure question schemas conform to Workers AI Clef requirements."""
@@ -64,15 +80,21 @@ class CloudflareDecisionAdapter(DecisionProvider):
     def decide(self, request: DecisionRequest) -> DecisionResult:
         if not self.account_id or not self.auth_token:
             raise ProviderError(
-                message="Missing CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_AUTH_TOKEN",
+                message=f"Missing decision provider credentials ({', '.join(self._auth_env) or 'auth_env not configured'})",
                 category="auth",
                 provider_id=request.provider_id,
                 retryable=False,
             )
+        if not self.base_url or not request.model:
+            raise ProviderError(
+                message="Decision provider base_url and model must be set in routing.yaml",
+                category="bad_request",
+                provider_id=request.provider_id,
+                retryable=False,
+            )
 
-        model_name = request.model or "clef-flash"
-        # Workers AI path is @cf/cloudflare/{model_name}
-        url = f"https://api.cloudflare.com/client/v4/accounts/{self.account_id}/ai/run/@cf/cloudflare/{model_name}"
+        model_name = request.model
+        url = f"{self.base_url.format(account_id=self.account_id)}/{model_name}"
         headers = {
             "Authorization": f"Bearer {self.auth_token}",
             "Content-Type": "application/json",
@@ -134,7 +156,7 @@ class CloudflareDecisionAdapter(DecisionProvider):
                 )
             if resp.status_code != 200:
                 raise ProviderError(
-                    message=f"Cloudflare Workers AI request failed: {resp.text[:400]}",
+                    message=f"Cloudflare Workers AI request failed (status {resp.status_code})",
                     category="bad_request",
                     provider_id=request.provider_id,
                     retryable=False,
@@ -155,7 +177,7 @@ class CloudflareDecisionAdapter(DecisionProvider):
             raw_answers = result_obj.get("answers", {})
             if not raw_answers:
                 raise ProviderError(
-                    message=f"Clef response contained no answers: {raw_json}",
+                    message="Clef response contained no answers",
                     category="bad_request",
                     provider_id=request.provider_id,
                     retryable=False,

@@ -1,24 +1,29 @@
 decision:
   active: clef-flash
-  fallback: heuristic
   send_prompt_text: true
   timeout_s: 1.5
   max_state_tokens: 2000
   providers:
   - id: clef-flash
     protocol: cloudflare_decision
+    display_name: Cloudflare Workers AI (Clef-flash)
     auth_env:
     - CLOUDFLARE_ACCOUNT_ID
     - CLOUDFLARE_AUTH_TOKEN
     model: clef-flash
+    base_url: https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/cloudflare
   - id: heuristic
     protocol: heuristic
+    display_name: Local Heuristic (Rule-based)
     auth_env: []
-    model: clef-flash
+    model: heuristic
+    base_url: null
   - id: decision-mock
     protocol: mock
+    display_name: Deterministic Mock
     auth_env: []
-    model: clef-flash
+    model: decision-mock
+    base_url: null
 rubric:
   version: 1
   questions:

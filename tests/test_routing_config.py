@@ -16,7 +16,7 @@ def test_load_default_routing_config() -> None:
     cfg = load_routing_config()
     assert isinstance(cfg, SmartRoutingConfig)
     assert cfg.decision.active == "clef-flash"
-    assert cfg.decision.fallback == "heuristic"
+    assert any(p.protocol == "heuristic" for p in cfg.decision.providers)
     assert cfg.decision.timeout_s == 1.5
     assert cfg.rubric.version == 1
     assert "task" in cfg.rubric.questions

@@ -49,11 +49,13 @@ class SmartClefStrategy(Strategy):
         snapshot_override: Optional[ScoreSnapshot] = None,
         **kwargs: Any,
     ) -> RoutingDecision:
+        cfg = self.config  # Read once so need and bar come from the same file.
+
         # 1. Extract decision result from features
         decision_data: Dict[str, Any] = features.get("smart_decision", {})
         answers = decision_data.get("answers", {})
         decision_source = decision_data.get("source", "heuristic_fallback")
-        decision_provider_id = decision_data.get("provider_id", "clef-flash")
+        decision_provider_id = decision_data.get("provider_id")
         decision_latency_ms = decision_data.get("latency_ms", 0.0)
 
         # 2. Extract answer dimensions
@@ -61,21 +63,21 @@ class SmartClefStrategy(Strategy):
         needs_reasoning_noul = answers.get("needs_reasoning", {}).get("noul", 0.0) if isinstance(answers.get("needs_reasoning"), dict) else 0.0
 
         # 3. Resolve metric
-        metric = self.config.metric_by_task.get(task_choice, self.config.metric_by_task.get("default", "intelligence"))
+        metric = cfg.metric_by_task.get(task_choice, cfg.metric_by_task.get("default", "intelligence"))
 
         # 4. Compute quality need and bar
         effective_bias = bias_override
-        if effective_bias is None and profile and profile in self.config.profiles:
-            effective_bias = self.config.profiles[profile].bias
+        if effective_bias is None and profile and profile in cfg.profiles:
+            effective_bias = cfg.profiles[profile].bias
         if effective_bias is None:
-            effective_bias = self.config.need.bias
+            effective_bias = cfg.need.bias
 
         need = compute_need(
             answers=answers,
-            need_config=self.config.need,
+            need_config=cfg.need,
             bias_override=effective_bias,
         )
-        bar = compute_bar(need=need, slack=self.config.need.slack)
+        bar = compute_bar(need=need, slack=cfg.need.slack)
 
         # 5. Resolve effective scores for candidate models
         active_snapshot = snapshot_override or self.snapshot
@@ -97,9 +99,9 @@ class SmartClefStrategy(Strategy):
             bar=bar,
             task=task_choice,
             needs_reasoning=needs_reasoning_noul,
-            pool_include=self.config.pool.include,
-            pool_exclude=self.config.pool.exclude,
-            unscored_policy=self.config.unscored_policy,
+            pool_include=cfg.pool.include,
+            pool_exclude=cfg.pool.exclude,
+            unscored_policy=cfg.unscored_policy,
             tokens_in_est=tokens_in_est,
             tokens_out_est=tokens_out_est,
         )
@@ -114,7 +116,7 @@ class SmartClefStrategy(Strategy):
             "smart_decision": decision_data,
             "decision_source": decision_source,
             "decision_provider_id": decision_provider_id,
-            "rubric_version": self.config.rubric.version,
+            "rubric_version": cfg.rubric.version,
             "need": need,
             "bar": bar,
             "metric_used": metric,

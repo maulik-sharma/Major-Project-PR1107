@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 import yaml
@@ -14,14 +15,18 @@ class DecisionProviderConfig(BaseModel):
     """Configuration for an individual decision model provider."""
     id: str
     protocol: str = "heuristic"
+    display_name: Optional[str] = None
     auth_env: List[str] = Field(default_factory=list)
-    model: str = "clef-flash"
+    model: str = ""
+    base_url: Optional[str] = None
 
 
 class DecisionConfig(BaseModel):
-    """Decision layer settings and available decision providers."""
-    active: str = "clef-flash"
-    fallback: str = "heuristic"
+    """Decision layer settings and available decision providers.
+
+    The heuristic is always the fallback (Rule 17), so there is no fallback key.
+    """
+    active: str = "heuristic"
     send_prompt_text: bool = True
     timeout_s: float = 1.5
     max_state_tokens: int = 2000
@@ -157,5 +162,8 @@ def save_routing_config(config: SmartRoutingConfig, path: Optional[Path | str] =
     target = Path(path) if path else find_routing_config_path()
     data = config.model_dump(mode="json")
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    # Write atomically so a turn reading the file never sees half a config.
+    tmp = target.with_name(target.name + ".tmp")
+    tmp.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    os.replace(tmp, target)
 

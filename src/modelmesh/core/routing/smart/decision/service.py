@@ -1,57 +1,81 @@
-"""DecisionService: orchestrates caching, timeouts, retries, circuit breaker, and fallbacks."""
+"""DecisionService: orchestrates caching, circuit breaking, validation, and fallbacks.
+
+Rule 17: ``get_decision`` never raises. Any failure on the way to a remote
+decision (state building, cache, breaker, network, invalid output) falls
+back to the local heuristic with ``source="heuristic_fallback"``.
+"""
 
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from typing import Any, Dict, List, Optional
 
-from modelmesh.core.config.routing_config import SmartRoutingConfig
-from modelmesh.core.errors import ProviderError
+from modelmesh.core.config.routing_config import DecisionProviderConfig, SmartRoutingConfig
 from modelmesh.core.routing.smart.decision.base import (
     DecisionProvider,
     DecisionRequest,
     DecisionResult,
     get_decision_provider,
 )
-from modelmesh.core.routing.smart.decision.cloudflare import CloudflareDecisionAdapter
 from modelmesh.core.routing.smart.decision.heuristic import HeuristicDecisionProvider
+from modelmesh.core.routing.smart.decision.validation import validate_answers
 from modelmesh.core.routing.smart.rubric import (
     build_rubric_questions,
     compute_rubric_hash,
 )
-from modelmesh.core.routing.smart.state_builder import build_decision_state
+from modelmesh.core.routing.smart.state_builder import build_decision_state, latest_user_text
 from modelmesh.core.storage import Storage
-from modelmesh.core.types import Message, Usage
+from modelmesh.core.types import ImagePart, Message, Usage
 
 logger = logging.getLogger(__name__)
 
+# Importing registers the adapters with the decision-provider registry.
+from modelmesh.core.routing.smart.decision import cloudflare as _cloudflare  # noqa: E402,F401
+from modelmesh.core.routing.smart.decision import mock as _mock  # noqa: E402,F401
+
 
 class CircuitBreaker:
-    """Tracks consecutive provider failures and enforces a cooldown window."""
+    """Thread-safe breaker: opens after repeated failures, then allows one probe."""
 
     def __init__(self, failure_threshold: int = 3, cooldown_seconds: float = 60.0) -> None:
         self.failure_threshold = failure_threshold
         self.cooldown_seconds = cooldown_seconds
-        self.consecutive_failures: int = 0
-        self.last_failure_time: float = 0.0
+        self._failures = 0
+        self._opened_at: Optional[float] = None
+        self._probing = False
+        self._lock = threading.Lock()
+
+    def allow_request(self) -> bool:
+        """Return True if a call may go out (closed, or the single half-open probe)."""
+        with self._lock:
+            if self._opened_at is None:
+                return True
+            if time.time() - self._opened_at < self.cooldown_seconds or self._probing:
+                return False
+            self._probing = True
+            return True
 
     def is_open(self) -> bool:
-        """True if the breaker is open (tripped) and cooldown has not elapsed."""
-        if self.consecutive_failures >= self.failure_threshold:
-            elapsed = time.time() - self.last_failure_time
-            if elapsed < self.cooldown_seconds:
-                return True
-            # Half-open: reset to give one chance
-            self.consecutive_failures = 0
-        return False
+        """True while the breaker is open and its cooldown has not elapsed."""
+        with self._lock:
+            return self._opened_at is not None and time.time() - self._opened_at < self.cooldown_seconds
 
     def record_success(self) -> None:
-        self.consecutive_failures = 0
+        """Close the breaker."""
+        with self._lock:
+            self._failures = 0
+            self._opened_at = None
+            self._probing = False
 
     def record_failure(self) -> None:
-        self.consecutive_failures += 1
-        self.last_failure_time = time.time()
+        """Count a failure; a failed half-open probe re-opens the breaker immediately."""
+        with self._lock:
+            self._failures += 1
+            if self._probing or self._failures >= self.failure_threshold:
+                self._opened_at = time.time()
+            self._probing = False
 
 
 class DecisionService:
@@ -66,24 +90,18 @@ class DecisionService:
         self.storage = storage
         self._circuit_breakers: Dict[str, CircuitBreaker] = {}
         self._providers: Dict[str, DecisionProvider] = {}
+        self._provider_configs: Dict[str, DecisionProviderConfig] = {}
+        self._heuristic = HeuristicDecisionProvider()
         self._init_providers()
 
     def _init_providers(self) -> None:
         for pcfg in self.config.decision.providers:
+            self._provider_configs[pcfg.id] = pcfg
             try:
                 cls = get_decision_provider(pcfg.protocol)
-                self._providers[pcfg.id] = cls()
+                self._providers[pcfg.id] = cls.from_config(pcfg)
             except Exception as exc:
-                logger.warning(f"Could not initialize decision provider '{pcfg.id}': {exc}")
-        if "heuristic" not in self._providers:
-            self._providers["heuristic"] = HeuristicDecisionProvider()
-        if "mock" not in self._providers and "decision-mock" not in self._providers:
-            from modelmesh.core.routing.smart.decision.mock import MockDecisionProvider
-            self._providers["mock"] = MockDecisionProvider()
-        if "decision-mock" in self._providers and "mock" not in self._providers:
-            self._providers["mock"] = self._providers["decision-mock"]
-        elif "mock" in self._providers and "decision-mock" not in self._providers:
-            self._providers["decision-mock"] = self._providers["mock"]
+                logger.warning("Could not initialize decision provider '%s': %s", pcfg.id, exc)
 
     def _get_breaker(self, provider_id: str) -> CircuitBreaker:
         if provider_id not in self._circuit_breakers:
@@ -97,66 +115,60 @@ class DecisionService:
         tools_count: int = 0,
         provider_override: Optional[str] = None,
     ) -> DecisionResult:
-        """Obtain a decision result with cache, timeout, retries, and fallback."""
-        start_time = time.perf_counter()
+        """Obtain a decision. Never raises: falls back to the heuristic on any failure."""
+        active_id = provider_override or self.config.decision.active
+        try:
+            return self._get_decision(messages, tools_enabled, tools_count, active_id)
+        except Exception as exc:
+            logger.warning("Decision via '%s' failed: %s. Using heuristic fallback.", active_id, exc)
+            return self._fallback(messages, tools_enabled, tools_count, active_id, str(exc))
 
-        # 1. Build bounded state
-        state_text, state_hash, use_heuristic_only = build_decision_state(
+    def _get_decision(
+        self,
+        messages: List[Message],
+        tools_enabled: bool,
+        tools_count: int,
+        active_id: str,
+    ) -> DecisionResult:
+        provider = self._providers.get(active_id)
+        if provider is None:
+            raise LookupError(f"Decision provider '{active_id}' is not configured")
+
+        # Local providers (heuristic, mock) need no cache, breaker, or privacy gate.
+        if not provider.remote:
+            return provider.decide(self._local_request(messages, tools_enabled, tools_count, active_id))
+
+        # Privacy switch (Rule 19): no prompt text ever goes to a remote provider.
+        if not self.config.decision.send_prompt_text:
+            res = self._heuristic.decide(self._local_request(messages, tools_enabled, tools_count, "heuristic"))
+            res.source = "heuristic"
+            return res
+
+        state_text, state_hash = build_decision_state(
             messages=messages,
             max_tokens=self.config.decision.max_state_tokens,
             tools_enabled=tools_enabled,
             tools_count=tools_count,
-            send_prompt_text=self.config.decision.send_prompt_text,
         )
-
         rubric_questions = build_rubric_questions(self.config.rubric)
         rubric_hash = compute_rubric_hash(self.config.rubric)
-
-        # 2. Privacy switch: bypass remote call if send_prompt_text is disabled
-        if use_heuristic_only:
-            heuristic_provider = self._providers.get("heuristic") or HeuristicDecisionProvider()
-            req = DecisionRequest(
-                state=state_text,
-                questions=rubric_questions,
-                provider_id="heuristic",
-            )
-            res = heuristic_provider.decide(req)
-            res.source = "heuristic"
-            return res
-
-        active_id = provider_override or self.config.decision.active
-        # Find active provider model name
-        model_name = "clef-flash"
-        for p in self.config.decision.providers:
-            if p.id == active_id:
-                model_name = p.model
-                break
-
-        # 3. Cache lookup
+        model_name = self._provider_configs[active_id].model
         cache_key = f"{active_id}:{model_name}:{rubric_hash}:{state_hash}"
-        if self.storage is not None:
-            cached = self.storage.get_decision_cache(cache_key)
-            if cached and "answers" in cached:
-                return DecisionResult(
-                    answers=cached["answers"],
-                    usage=Usage(input_tokens=0, output_tokens=0),
-                    latency_ms=0.5,
-                    provider_id=active_id,
-                    model=model_name,
-                    raw_response=cached,
-                    source="cache",
-                )
 
-        # 4. Check circuit breaker
+        cached = self._read_cache(cache_key)
+        if cached is not None:
+            return DecisionResult(
+                answers=cached,
+                source="cache",
+                usage=Usage(input_tokens=0, output_tokens=0),
+                latency_ms=0.5,
+                provider_id=active_id,
+                model=model_name,
+            )
+
         breaker = self._get_breaker(active_id)
-        if breaker.is_open():
-            logger.info(f"Circuit breaker is open for decision provider '{active_id}'. Using heuristic fallback.")
-            return self._fallback_heuristic(state_text, rubric_questions, active_id)
-
-        # 5. Call active provider with 1 retry on network error
-        active_provider = self._providers.get(active_id)
-        if active_provider is None:
-            return self._fallback_heuristic(state_text, rubric_questions, active_id)
+        if not breaker.allow_request():
+            raise RuntimeError(f"Circuit breaker open for '{active_id}'")
 
         req = DecisionRequest(
             state=state_text,
@@ -165,57 +177,84 @@ class DecisionService:
             model=model_name,
             provider_id=active_id,
         )
+        try:
+            res = provider.decide(req)
+            res.answers = validate_answers(res.answers, self.config.rubric)
+        except Exception:
+            breaker.record_failure()
+            raise
+        breaker.record_success()
 
-        max_attempts = 2
-        for attempt in range(max_attempts):
-            try:
-                res = active_provider.decide(req)
-                breaker.record_success()
+        self._write_cache(cache_key, active_id, state_hash, res)
+        return res
 
-                # Save to cache
-                if self.storage is not None:
-                    self.storage.save_decision_cache(
-                        key=cache_key,
-                        decision_provider=active_id,
-                        rubric_version=self.config.rubric.version,
-                        state_hash=state_hash,
-                        answers=res.answers,
-                        router_latency_ms=int(res.latency_ms),
-                    )
-                if not res.source:
-                    res.source = "clef" if active_id == "clef-flash" else active_id
-                return res
-
-            except ProviderError as exc:
-                if exc.category == "network" and attempt == 0:
-                    time.sleep(0.1)
-                    continue  # Retry once for network glitch
-                breaker.record_failure()
-                logger.warning(f"Decision provider '{active_id}' failed: {exc}. Falling back to heuristic.")
-                break
-            except Exception as exc:
-                breaker.record_failure()
-                logger.warning(f"Unexpected error in decision provider '{active_id}': {exc}. Falling back to heuristic.")
-                break
-
-        return self._fallback_heuristic(state_text, rubric_questions, active_id)
-
-    def _fallback_heuristic(
+    def _local_request(
         self,
-        state_text: str,
-        rubric_questions: Dict[str, Dict[str, Any]],
+        messages: List[Message],
+        tools_enabled: bool,
+        tools_count: int,
         provider_id: str,
-    ) -> DecisionResult:
-        """Safely execute heuristic fallback without failing the turn (Rule 17)."""
-        heuristic_provider = self._providers.get("heuristic") or HeuristicDecisionProvider()
-        req = DecisionRequest(
-            state=state_text,
-            questions=rubric_questions,
-            provider_id="heuristic",
+    ) -> DecisionRequest:
+        """Build a request for an on-device provider: it may read the real latest message."""
+        has_images = any(isinstance(p, ImagePart) for m in messages for p in m.parts)
+        return DecisionRequest(
+            state="",
+            questions=build_rubric_questions(self.config.rubric),
+            provider_id=provider_id,
+            latest_text=latest_user_text(messages),
+            context={
+                "tools_enabled": tools_enabled,
+                "tools_count": tools_count,
+                "history_messages": max(0, len(messages) - 1),
+                "has_images": has_images,
+            },
         )
-        res = heuristic_provider.decide(req)
+
+    def _read_cache(self, key: str) -> Optional[Dict[str, Any]]:
+        """Return validated cached answers, or None on miss or any cache problem."""
+        if self.storage is None:
+            return None
+        try:
+            cached = self.storage.get_decision_cache(key)
+            if cached and "answers" in cached:
+                return validate_answers(cached["answers"], self.config.rubric)
+        except Exception as exc:
+            logger.warning("Decision cache read failed: %s", exc)
+        return None
+
+    def _write_cache(self, key: str, provider_id: str, state_hash: str, res: DecisionResult) -> None:
+        """Best-effort cache write; a storage error never discards a good decision."""
+        if self.storage is None:
+            return
+        try:
+            self.storage.save_decision_cache(
+                key=key,
+                decision_provider=provider_id,
+                rubric_version=self.config.rubric.version,
+                state_hash=state_hash,
+                answers=res.answers,
+                router_latency_ms=int(res.latency_ms),
+            )
+        except Exception as exc:
+            logger.warning("Decision cache write failed: %s", exc)
+
+    def _fallback(
+        self,
+        messages: List[Message],
+        tools_enabled: bool,
+        tools_count: int,
+        provider_id: str,
+        error: str,
+    ) -> DecisionResult:
+        """Heuristic fallback (Rule 17). Uses neutral answers if even the heuristic fails."""
+        try:
+            res = self._heuristic.decide(self._local_request(messages, tools_enabled, tools_count, "heuristic"))
+        except Exception as exc:
+            logger.error("Heuristic fallback failed: %s", exc)
+            res = DecisionResult(answers=_neutral_answers(), source="heuristic_fallback", model="heuristic")
         res.source = "heuristic_fallback"
         res.provider_id = provider_id
+        res.error = error
         return res
 
     def evaluate(
@@ -233,3 +272,12 @@ class DecisionService:
             provider_override=provider_override,
         )
 
+
+def _neutral_answers() -> Dict[str, Any]:
+    """Middle-of-the-road answers used only if the heuristic itself crashes."""
+    return {
+        "task": {"type": "choice", "choice": "chat_general", "confidence": 0.5},
+        "difficulty": {"type": "score", "score": 2.0, "confidence": 0.5},
+        "precision": {"type": "score", "score": 1.5, "confidence": 0.5},
+        "larger_model_benefit": {"type": "score", "score": 1.5, "confidence": 0.5},
+    }

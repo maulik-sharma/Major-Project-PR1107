@@ -79,9 +79,6 @@ class RoutingTab(QWidget):
         smart_form = QFormLayout(smart_group)
 
         self.decision_provider_combo = QComboBox()
-        self.decision_provider_combo.addItem("Cloudflare Workers AI (Clef-flash)", "clef-flash")
-        self.decision_provider_combo.addItem("Local Heuristic (Rule-based)", "heuristic")
-        self.decision_provider_combo.addItem("Deterministic Mock", "mock")
         self.decision_provider_combo.currentIndexChanged.connect(self._on_decision_provider_changed)
 
         prov_row = QHBoxLayout()
@@ -91,9 +88,10 @@ class RoutingTab(QWidget):
         prov_row.addWidget(self.test_btn)
         smart_form.addRow("Decision Provider:", prov_row)
 
-        self.privacy_check = QCheckBox("Send prompt text to decision provider (Cloudflare Workers AI)")
+        self.privacy_check = QCheckBox("Send prompt text to remote decision provider")
         self.privacy_check.setToolTip(
-            "When unchecked, only bounded context (token counts, roles) is sent to local heuristic without sending raw text."
+            "When unchecked, no prompt text leaves your machine: routing decisions are made "
+            "by the local heuristic instead of the remote decision provider."
         )
         self.privacy_check.toggled.connect(self._on_privacy_toggled)
         smart_form.addRow("Privacy:", self.privacy_check)
@@ -183,11 +181,11 @@ class RoutingTab(QWidget):
             self.safety_margin.setValue(int(settings.value("router/safety_margin", 500)))
             self.cooldown_sec.setValue(int(settings.value("router/cooldown_sec", 60)))
 
-            # Decision
-            curr_prov = self.routing_config.decision.active
-            if curr_prov == "decision-mock":
-                curr_prov = "mock"
-            idx_p = self.decision_provider_combo.findData(curr_prov)
+            # Decision providers come from routing.yaml
+            self.decision_provider_combo.clear()
+            for pcfg in self.routing_config.decision.providers:
+                self.decision_provider_combo.addItem(pcfg.display_name or pcfg.id, pcfg.id)
+            idx_p = self.decision_provider_combo.findData(self.routing_config.decision.active)
             if idx_p >= 0:
                 self.decision_provider_combo.setCurrentIndex(idx_p)
 
@@ -244,7 +242,7 @@ class RoutingTab(QWidget):
         self.config_changed.emit()
 
     def _on_decision_provider_changed(self) -> None:
-        prov = self.decision_provider_combo.currentData() or "clef-flash"
+        prov = self.decision_provider_combo.currentData() or self.routing_config.decision.active
         self.routing_config.decision.active = prov
         save_routing_config(self.routing_config)
         self.config_changed.emit()
@@ -297,7 +295,7 @@ class RoutingTab(QWidget):
         if self._test_worker and self._test_worker.isRunning():
             return
 
-        prov = self.decision_provider_combo.currentData() or "clef-flash"
+        prov = self.decision_provider_combo.currentData() or self.routing_config.decision.active
         self.test_btn.setEnabled(False)
         self.test_btn.setText("Testing...")
 
