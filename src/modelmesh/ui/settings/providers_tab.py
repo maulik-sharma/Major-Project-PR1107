@@ -23,56 +23,13 @@ from PyQt6.QtWidgets import (
 )
 
 from modelmesh.core.keys import get_env_key, set_env_key
-from modelmesh.core.providers.base import get_adapter
+from modelmesh.core.providers.base import get_adapter, list_protocols
 from modelmesh.core.errors import RegistryError, friendly_error
-from modelmesh.core.registry import ModelRegistry
+from modelmesh.core.registry import ModelRegistry, load_provider_presets
 from modelmesh.core.types import ProviderConfig
 
 
-PRESETS: Dict[str, Dict[str, Any]] = {
-    "Groq": {
-        "id": "groq",
-        "protocol": "openai_compat",
-        "base_url": "https://api.groq.com/openai/v1",
-        "auth_env": ["GROQ_API_KEY"],
-    },
-    "OpenRouter": {
-        "id": "openrouter",
-        "protocol": "openai_compat",
-        "base_url": "https://openrouter.ai/api/v1",
-        "auth_env": ["OPENROUTER_API_KEY"],
-    },
-    "Google Gemini": {
-        "id": "gemini",
-        "protocol": "openai_compat",
-        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "auth_env": ["GEMINI_API_KEY"],
-    },
-    "OpenAI": {
-        "id": "openai",
-        "protocol": "openai_compat",
-        "base_url": "https://api.openai.com/v1",
-        "auth_env": ["OPENAI_API_KEY"],
-    },
-    "Anthropic": {
-        "id": "anthropic",
-        "protocol": "anthropic",
-        "base_url": "https://api.anthropic.com",
-        "auth_env": ["ANTHROPIC_API_KEY"],
-    },
-    "Ollama (Local)": {
-        "id": "ollama",
-        "protocol": "openai_compat",
-        "base_url": "http://localhost:11434/v1",
-        "auth_env": [],
-    },
-    "Custom OpenAI-Compatible": {
-        "id": "custom",
-        "protocol": "openai_compat",
-        "base_url": "https://api.example.com/v1",
-        "auth_env": ["CUSTOM_API_KEY"],
-    },
-}
+CUSTOM_PRESET = "Custom (enter details)"
 
 
 class ProviderTestWorker(QThread):
@@ -126,9 +83,15 @@ class AddProviderDialog(QDialog):
         layout = QVBoxLayout(self)
         form = QFormLayout()
 
+        # Presets come from config/presets.yaml, limited to protocols this build supports.
+        supported = set(list_protocols())
+        self._presets = {
+            p.get("name", p["id"]): p for p in load_provider_presets() if p.get("protocol") in supported
+        }
         self.preset_combo = QComboBox()
-        for name in PRESETS.keys():
+        for name in self._presets:
             self.preset_combo.addItem(name)
+        self.preset_combo.addItem(CUSTOM_PRESET)
         self.preset_combo.currentTextChanged.connect(self._on_preset_changed)
         form.addRow("Preset:", self.preset_combo)
 
@@ -136,7 +99,7 @@ class AddProviderDialog(QDialog):
         form.addRow("Provider ID:", self.id_input)
 
         self.protocol_combo = QComboBox()
-        self.protocol_combo.addItems(["openai_compat", "anthropic", "mock"])
+        self.protocol_combo.addItems(sorted(supported))
         form.addRow("Protocol:", self.protocol_combo)
 
         self.url_input = QLineEdit()
@@ -158,7 +121,7 @@ class AddProviderDialog(QDialog):
         self._on_preset_changed(self.preset_combo.currentText())
 
     def _on_preset_changed(self, preset_name: str) -> None:
-        data = PRESETS.get(preset_name, {})
+        data = self._presets.get(preset_name, {})
         self.id_input.setText(data.get("id", ""))
         self.protocol_combo.setCurrentText(data.get("protocol", "openai_compat"))
         self.url_input.setText(data.get("base_url", ""))

@@ -90,3 +90,8 @@ def get_adapter(protocol_id: str) -> ProviderAdapter:
             f"Available protocols: {list(_ADAPTER_REGISTRY.keys())}"
         )
     return adapter
+
+
+def list_protocols() -> List[str]:
+    """Protocol ids that have a registered adapter."""
+    return list(_ADAPTER_REGISTRY.keys())

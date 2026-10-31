@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import time
 from typing import Any, Dict, List, Optional
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -24,6 +25,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from modelmesh.core.config.routing_config import load_routing_config
 from modelmesh.core.registry import ModelRegistry
 from modelmesh.core.scores.matcher import suggest_model_slugs
 from modelmesh.core.scores.snapshots import (
@@ -319,6 +321,8 @@ class ScoresTab(QWidget):
     def _on_refresh_clicked(self) -> None:
         if self._refresh_worker and self._refresh_worker.isRunning():
             return
+        if not self._confirm_refresh_if_recent():
+            return
 
         self.refresh_btn.setEnabled(False)
         self.refresh_btn.setText("Fetching...")
@@ -328,9 +332,27 @@ class ScoresTab(QWidget):
         self._refresh_worker.error_occurred.connect(self._on_refresh_error)
         self._refresh_worker.start()
 
+    def _confirm_refresh_if_recent(self) -> bool:
+        """Free-tier requests are limited: ask first if the snapshot is newer than the configured interval."""
+        snapshot = self.store.get_latest_snapshot()
+        if snapshot is None:
+            return True
+        min_days = load_routing_config().scores.refresh_min_interval_days
+        age_days = (time.time() - snapshot.fetched_at) / 86400
+        if age_days >= min_days:
+            return True
+        reply = QMessageBox.question(
+            self,
+            "Scores Are Recent",
+            f"Scores were refreshed {age_days:.1f} days ago (minimum interval: {min_days} days). "
+            "Refresh anyway? This uses your Artificial Analysis request quota.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        return reply == QMessageBox.StandardButton.Yes
+
     def _on_refresh_finished(self, data: Dict[str, Any]) -> None:
         self.refresh_btn.setEnabled(True)
-        self.refresh_btn.setText("⟳ Refresh Scores")
+        self.refresh_btn.setText("Refresh Scores")
         QMessageBox.information(
             self,
             "Scores Refreshed",
@@ -341,7 +363,7 @@ class ScoresTab(QWidget):
 
     def _on_refresh_error(self, err_msg: str) -> None:
         self.refresh_btn.setEnabled(True)
-        self.refresh_btn.setText("⟳ Refresh Scores")
+        self.refresh_btn.setText("Refresh Scores")
         QMessageBox.warning(
             self,
             "Refresh Failed",

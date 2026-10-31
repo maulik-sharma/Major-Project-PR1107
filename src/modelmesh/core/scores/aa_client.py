@@ -10,21 +10,28 @@ from modelmesh.core.errors import ProviderError
 from modelmesh.core.keys import get_env_key, load_env
 
 ATTRIBUTION_TEXT: str = "Model scores: Artificial Analysis"
-DEFAULT_BASE_URL: str = "https://artificialanalysis.ai/api/v2/language/models/free"
 
 
 class ArtificialAnalysisClient:
-    """Synchronous HTTP client for Artificial Analysis free models API."""
+    """Synchronous HTTP client for Artificial Analysis free models API.
+
+    The URL and key variable come from ``scores`` in routing.yaml (Rule 6).
+    """
 
     def __init__(
         self,
         api_key: Optional[str] = None,
-        base_url: str = DEFAULT_BASE_URL,
+        base_url: Optional[str] = None,
         timeout: float = 15.0,
     ) -> None:
+        from modelmesh.core.config.routing_config import load_routing_config
+
         load_env()
-        self.api_key = api_key or get_env_key("ARTIFICIAL_ANALYSIS_API_KEY")
-        self.base_url = base_url
+        scores_cfg = load_routing_config().scores
+        key_var = scores_cfg.auth_env[0] if scores_cfg.auth_env else ""
+        self.api_key = api_key or (get_env_key(key_var) if key_var else None)
+        self.key_var = key_var or "(scores.auth_env not set)"
+        self.base_url = base_url or scores_cfg.base_url
         self.timeout = timeout
 
     def fetch_all_models(
@@ -41,8 +48,15 @@ class ArtificialAnalysisClient:
         """
         if not self.api_key:
             raise ProviderError(
-                message="Missing ARTIFICIAL_ANALYSIS_API_KEY in environment or .env",
+                message=f"Missing {self.key_var} in environment or .env",
                 category="auth",
+                provider_id="artificial_analysis",
+                retryable=False,
+            )
+        if not self.base_url:
+            raise ProviderError(
+                message="scores.base_url is not set in routing.yaml",
+                category="bad_request",
                 provider_id="artificial_analysis",
                 retryable=False,
             )

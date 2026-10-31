@@ -88,8 +88,10 @@ class ProfileConfig(BaseModel):
 
 
 class ScoresSettingsConfig(BaseModel):
-    """Scores source and update intervals."""
+    """Score snapshot source: where to fetch it and how often a refresh is worthwhile."""
     source: str = "artificial_analysis"
+    base_url: Optional[str] = None
+    auth_env: List[str] = Field(default_factory=lambda: ["ARTIFICIAL_ANALYSIS_API_KEY"])
     refresh_min_interval_days: int = 7
 
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 import yaml
 
 from modelmesh.core.errors import RegistryError
@@ -293,3 +293,15 @@ def load_default_registry(config_dir: Optional[Path | str] = None) -> ModelRegis
             )
         )
     return reg
+
+
+def load_provider_presets(config_dir: Optional[Path | str] = None) -> List[Dict[str, Any]]:
+    """Read provider presets from config/presets.yaml (empty list if missing or unreadable)."""
+    path = Path(config_dir or get_default_config_dir()) / "presets.yaml"
+    if not path.exists():
+        return []
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError:
+        return []
+    return [p for p in data.get("presets", []) if isinstance(p, dict) and p.get("id")]

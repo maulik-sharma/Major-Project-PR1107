@@ -116,4 +116,7 @@ profiles:
     bias: 0.15
 scores:
   source: artificial_analysis
+  base_url: https://artificialanalysis.ai/api/v2/language/models/free
+  auth_env:
+  - ARTIFICIAL_ANALYSIS_API_KEY
   refresh_min_interval_days: 7

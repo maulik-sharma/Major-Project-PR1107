@@ -906,3 +906,14 @@ def test_friendly_errors_scrub_secrets(monkeypatch) -> None:
     assert "tok_abcdef123456" not in details
     assert friendly_error(RoutingError("no eligible"))[2] == "routing"
     assert "Traceback" not in friendly_error(ValueError("boom"))[0]
+
+
+def test_add_provider_presets_come_from_presets_yaml(qapp) -> None:
+    from modelmesh.ui.settings.providers_tab import CUSTOM_PRESET, AddProviderDialog
+
+    dlg = AddProviderDialog()
+    names = [dlg.preset_combo.itemText(i) for i in range(dlg.preset_combo.count())]
+    assert "Groq" in names and names[-1] == CUSTOM_PRESET
+    assert not any("Bedrock" in n for n in names)  # no adapter for that protocol in this build
+    dlg.preset_combo.setCurrentText("Groq")
+    assert dlg.get_provider_config().base_url == "https://api.groq.com/openai/v1"
