@@ -159,7 +159,7 @@ class ChatWorker(QThread):
 
 
 class ScoresRefreshWorker(QThread):
-    """QThread fetching fresh score snapshot from Artificial Analysis."""
+    """QThread fetching a fresh score snapshot from Artificial Analysis or LMArena."""
 
     started_refresh = pyqtSignal()
     finished_refresh = pyqtSignal(dict)
@@ -170,20 +170,25 @@ class ScoresRefreshWorker(QThread):
         api_key: Optional[str] = None,
         storage: Optional[Any] = None,
         parent: Optional[Any] = None,
+        source: str = "artificial_analysis",
     ) -> None:
         super().__init__(parent)
         self.api_key = api_key
         self.storage = storage
+        self.source = source
 
     def run(self) -> None:
         self.started_refresh.emit()
         try:
             from modelmesh.core.scores.aa_client import ArtificialAnalysisClient
+            from modelmesh.core.scores.arena_client import ARENA_SOURCE, LMArenaClient
             from modelmesh.core.scores.snapshots import ScoreStore
             from modelmesh.core.storage import get_default_storage
 
-            client = ArtificialAnalysisClient(api_key=self.api_key)
-            snapshot = client.fetch_snapshot()
+            if self.source == ARENA_SOURCE:
+                snapshot = LMArenaClient().fetch_snapshot()
+            else:
+                snapshot = ArtificialAnalysisClient(api_key=self.api_key).fetch_snapshot()
 
             storage = self.storage or get_default_storage()
             store = ScoreStore(storage)
@@ -195,6 +200,7 @@ class ScoresRefreshWorker(QThread):
                 "index_version": snapshot.index_version,
                 "rate_limit_remaining": snapshot.rate_limit_remaining,
                 "fetched_at": snapshot.fetched_at,
+                "source": snapshot.source,
             })
         except Exception as exc:
             message, details, _ = friendly_error(exc)

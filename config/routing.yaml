@@ -120,3 +120,12 @@ scores:
   auth_env:
   - ARTIFICIAL_ANALYSIS_API_KEY
   refresh_min_interval_days: 7
+  arena:
+    url: https://huggingface.co/datasets/lmarena-ai/leaderboard-dataset/resolve/main/text_style_control/latest-00000-of-00001.parquet
+    categories:
+    - overall
+    - coding
+    - hard_prompts
+    - math
+    - instruction_following
+    - creative_writing

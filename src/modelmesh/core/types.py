@@ -378,13 +378,15 @@ class ManualScoresConfig:
 
 @dataclass
 class ModelScoresConfig:
-    """Scores metadata linking a model to an AA snapshot slug and manual overrides."""
+    """Scores metadata linking a model to an AA slug, an LMArena model name, and manual overrides."""
     aa_slug: Optional[str] = None
+    arena_name: Optional[str] = None
     manual: ManualScoresConfig = field(default_factory=ManualScoresConfig)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "aa_slug": self.aa_slug,
+            "arena_name": self.arena_name,
             "manual": self.manual.to_dict(),
         }
 
@@ -396,8 +398,10 @@ class ModelScoresConfig:
             raw_slug = raw_slug.get("slug")
         if raw_slug is not None:
             raw_slug = str(raw_slug)
+        raw_arena = data.get("arena_name")
         return cls(
             aa_slug=raw_slug,
+            arena_name=str(raw_arena) if raw_arena else None,
             manual=ManualScoresConfig.from_dict(raw_manual),
         )
 

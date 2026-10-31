@@ -79,18 +79,29 @@ class EffectiveScores:
     is_manual: bool = False
     is_unscored: bool = True
     aa_slug: Optional[str] = None
+    # LMArena ratings by category (e.g. {"overall": 1450.0, "coding": 1500.0}).
+    arena: Dict[str, float] = field(default_factory=dict)
+    arena_name: Optional[str] = None
+
+    def metric(self, name: str) -> Optional[float]:
+        """Value of a ranking metric: intelligence/coding/agentic (AA) or arena_<category>."""
+        if name.startswith("arena_"):
+            return self.arena.get(name[len("arena_"):])
+        return {"intelligence": self.intelligence, "coding": self.coding, "agentic": self.agentic}.get(name)
 
 
 def resolve_effective_scores(
     model: ModelConfig,
     snapshot: Optional[ScoreSnapshot] = None,
+    arena_snapshot: Optional[ScoreSnapshot] = None,
 ) -> EffectiveScores:
-    """Determine effective intelligence, coding, and agentic scores for a model.
+    """Determine effective AA scores and LMArena ratings for a model.
 
     Priority:
-    1. Manual overrides in model.scores.manual
-    2. Linked record in score snapshot via model.scores.aa_slug
-    3. Unscored (None). A missing sub-index is never filled from another index:
+    1. Manual overrides in model.scores.manual (arena_text_elo overrides arena "overall")
+    2. Linked record in the AA snapshot via model.scores.aa_slug, and in the
+       LMArena snapshot via model.scores.arena_name
+    3. Unscored (None). A missing metric is never filled from another one:
        the selector decides which single metric to rank a whole pool on.
     """
     manual = model.scores.manual
@@ -122,12 +133,22 @@ def resolve_effective_scores(
         if agent is None and evals.get("artificial_analysis_agentic_index") is not None:
             agent = float(evals["artificial_analysis_agentic_index"])
 
-    is_unscored = (intel is None and code is None and agent is None)
+    arena_name = model.scores.arena_name
+    arena: Dict[str, float] = {}
+    if arena_name and arena_snapshot and arena_name in arena_snapshot.models_by_slug:
+        for cat, val in (arena_snapshot.models_by_slug[arena_name].get("ratings") or {}).items():
+            if val is not None:
+                arena[cat] = float(val)
+    if elo is not None:
+        arena["overall"] = elo
+    has_any_manual = has_any_manual or elo is not None
+
+    is_unscored = (intel is None and code is None and agent is None and not arena)
     if is_unscored:
         source = "unscored"
     elif has_any_manual:
         source = "manual"
-    elif aa_record is not None:
+    elif aa_record is not None or arena:
         source = "snapshot"
     else:
         source = "unscored"
@@ -141,6 +162,8 @@ def resolve_effective_scores(
         is_manual=has_any_manual,
         is_unscored=is_unscored,
         aa_slug=aa_slug,
+        arena=arena,
+        arena_name=arena_name,
     )
 
 

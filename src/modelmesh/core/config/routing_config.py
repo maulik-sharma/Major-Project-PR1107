@@ -87,12 +87,19 @@ class ProfileConfig(BaseModel):
     bias: float = 0.0
 
 
+class ArenaSourceConfig(BaseModel):
+    """LMArena leaderboard file (a parquet file of human-preference ratings) and the categories kept."""
+    url: Optional[str] = None
+    categories: List[str] = Field(default_factory=lambda: ["overall", "coding"])
+
+
 class ScoresSettingsConfig(BaseModel):
-    """Score snapshot source: where to fetch it and how often a refresh is worthwhile."""
+    """Score snapshot sources: where to fetch them and how often a refresh is worthwhile."""
     source: str = "artificial_analysis"
     base_url: Optional[str] = None
     auth_env: List[str] = Field(default_factory=lambda: ["ARTIFICIAL_ANALYSIS_API_KEY"])
     refresh_min_interval_days: int = 7
+    arena: ArenaSourceConfig = Field(default_factory=ArenaSourceConfig)
 
 
 class SmartRoutingConfig(BaseModel):

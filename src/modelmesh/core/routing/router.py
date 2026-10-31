@@ -38,7 +38,8 @@ class Router:
         self.storage = storage
         self.safety_margin_tokens = safety_margin_tokens
         self._decision_service = decision_service
-        self._snapshot_cache: Optional[Tuple[str, Any]] = None
+        self._snapshot_cache: Optional[Tuple[Any, Any]] = None
+        self._arena_cache: Optional[Tuple[str, Any]] = None
 
     @property
     def decision_service(self) -> Any:
@@ -102,6 +103,23 @@ class Router:
             logger.warning("Could not load score snapshot: %s", exc)
             return None, None
 
+    def _arena_snapshot(self) -> Optional[Any]:
+        """Return the newest LMArena snapshot, parsing it only when its id changes."""
+        from modelmesh.core.scores.arena_client import ARENA_SOURCE
+        from modelmesh.core.scores.snapshots import ScoreStore
+
+        try:
+            store = ScoreStore(self.storage)
+            latest_id = store.get_latest_snapshot_id(source=ARENA_SOURCE)
+            if latest_id is None:
+                return None
+            if self._arena_cache is None or self._arena_cache[0] != latest_id:
+                self._arena_cache = (latest_id, store.get_latest_snapshot(source=ARENA_SOURCE))
+            return self._arena_cache[1]
+        except Exception as exc:
+            logger.warning("Could not load LMArena snapshot: %s", exc)
+            return None
+
     def route(
         self,
         request: ChatRequest,
@@ -160,6 +178,8 @@ class Router:
 
             if self.storage is not None and "snapshot_override" not in kwargs:
                 kwargs["snapshot_override"], kwargs["snapshot_note"] = self._active_snapshot()
+            if self.storage is not None and "arena_snapshot_override" not in kwargs:
+                kwargs["arena_snapshot_override"] = self._arena_snapshot()
 
         decision = strategy.rank(
             eligible_candidates=eligible,

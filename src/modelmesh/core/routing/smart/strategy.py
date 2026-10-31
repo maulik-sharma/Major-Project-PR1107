@@ -48,6 +48,7 @@ class SmartClefStrategy(Strategy):
         profile: Optional[str] = None,
         bias_override: Optional[float] = None,
         snapshot_override: Optional[ScoreSnapshot] = None,
+        arena_snapshot_override: Optional[ScoreSnapshot] = None,
         **kwargs: Any,
     ) -> RoutingDecision:
         cfg = self.config  # Read once so need and bar come from the same file.
@@ -89,7 +90,9 @@ class SmartClefStrategy(Strategy):
         effective_scores_map: Dict[str, EffectiveScores] = {}
         for c in eligible_candidates:
             if c.model_id not in effective_scores_map:
-                effective_scores_map[c.model_id] = resolve_effective_scores(c.model_config, active_snapshot)
+                effective_scores_map[c.model_id] = resolve_effective_scores(
+                    c.model_config, active_snapshot, arena_snapshot_override
+                )
 
         # 6. Estimate token counts
         tokens_in_est = estimate_request_tokens(request)
@@ -160,6 +163,7 @@ class SmartClefStrategy(Strategy):
             "router_cost_usd": 0.0,
             "score_snapshot_id": active_snapshot.id if active_snapshot is not None else None,
             "score_snapshot_note": kwargs.get("snapshot_note"),
+            "arena_snapshot_id": arena_snapshot_override.id if arena_snapshot_override is not None else None,
             "stickiness_outcome": stickiness_outcome,
             "estimated_cost_usd": select_meta["estimated_cost_usd"],
             "notices": select_meta["notices"],
