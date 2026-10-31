@@ -198,14 +198,16 @@ class ScoresTab(QWidget):
 
     def refresh(self) -> None:
         """Reload snapshot and populate model table."""
-        snapshot = self.store.get_latest_snapshot()
+        snapshot, note = self.store.get_active_snapshot(self.registry.models())
         if snapshot:
             dt_str = datetime.datetime.fromtimestamp(snapshot.fetched_at).strftime("%Y-%m-%d %H:%M")
             count = len(snapshot.models_by_slug)
             rem = f", {snapshot.rate_limit_remaining} reqs left" if snapshot.rate_limit_remaining is not None else ""
+            kept = "  ⚠ older index kept" if note else ""
             self.snapshot_info_label.setText(
-                f"Snapshot: {dt_str} ({count} models{rem})"
+                f"Snapshot: {dt_str}, index v{snapshot.index_version or '?'} ({count} models{rem}){kept}"
             )
+            self.snapshot_info_label.setToolTip(note or "")
         else:
             self.snapshot_info_label.setText("No snapshot cached (using local defaults)")
 

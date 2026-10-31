@@ -84,21 +84,23 @@ class Router:
             "error": res.error,
         }
 
-    def _latest_snapshot(self) -> Optional[Any]:
-        """Return the newest score snapshot, parsing it only when its id changes."""
+    def _active_snapshot(self) -> Tuple[Optional[Any], Optional[str]]:
+        """Return (score snapshot to rank with, note), re-choosing only when snapshots or links change."""
         from modelmesh.core.scores.snapshots import ScoreStore
 
         try:
             store = ScoreStore(self.storage)
             latest_id = store.get_latest_snapshot_id()
             if latest_id is None:
-                return None
-            if self._snapshot_cache is None or self._snapshot_cache[0] != latest_id:
-                self._snapshot_cache = (latest_id, store.get_latest_snapshot())
+                return None, None
+            models = self.registry.models()
+            key = (latest_id, tuple((m.id, str(m.scores.aa_slug)) for m in models))
+            if self._snapshot_cache is None or self._snapshot_cache[0] != key:
+                self._snapshot_cache = (key, store.get_active_snapshot(models))
             return self._snapshot_cache[1]
         except Exception as exc:
             logger.warning("Could not load score snapshot: %s", exc)
-            return None
+            return None, None
 
     def route(
         self,
@@ -157,7 +159,7 @@ class Router:
                     features["smart_decision"] = self._decide(request)
 
             if self.storage is not None and "snapshot_override" not in kwargs:
-                kwargs["snapshot_override"] = self._latest_snapshot()
+                kwargs["snapshot_override"], kwargs["snapshot_note"] = self._active_snapshot()
 
         decision = strategy.rank(
             eligible_candidates=eligible,

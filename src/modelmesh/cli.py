@@ -57,10 +57,12 @@ def handle_scores_command(args: argparse.Namespace, storage: Storage) -> int:
             return 1
 
     elif args.scores_action == "show":
-        snapshot = store.get_latest_snapshot()
+        snapshot, note = store.get_active_snapshot(registry.models())
         print(f"\n=== ModelMesh Model Intelligence Scores ===")
         if snapshot:
             print(f"Active Snapshot: {snapshot.id} (Fetched: {snapshot.fetched_at}, Index v{snapshot.index_version})")
+            if note:
+                print(f"Note: {note}")
         else:
             print("Notice: No snapshot found in database. Run 'modelmesh scores refresh' to fetch from AA.")
 

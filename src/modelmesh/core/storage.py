@@ -638,6 +638,29 @@ class Storage:
                 d["payload"] = json.loads(d["payload_json"])
                 return d
 
+    def get_newest_score_snapshots_per_version(self, source: str = "artificial_analysis") -> List[Dict[str, Any]]:
+        """Newest non-empty snapshot of each index version for a source, payload parsed."""
+        with self._lock:
+            with self._get_connection() as conn:
+                rows = conn.execute(
+                    "SELECT * FROM score_snapshots WHERE source = ? ORDER BY fetched_at DESC",
+                    (source,),
+                ).fetchall()
+                seen: set = set()
+                result: List[Dict[str, Any]] = []
+                for row in rows:
+                    d = dict(row)
+                    version = d.get("index_version") or ""
+                    if version in seen:
+                        continue
+                    payload = json.loads(d["payload_json"])
+                    if not (payload.get("models") or payload.get("data")):
+                        continue
+                    seen.add(version)
+                    d["payload"] = payload
+                    result.append(d)
+                return result
+
     def get_score_snapshot(self, snapshot_id: str) -> Optional[Dict[str, Any]]:
         with self._lock:
             with self._get_connection() as conn:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from modelmesh.core.storage import Storage
 from modelmesh.core.types import ModelConfig
@@ -171,3 +171,17 @@ class ScoreStore:
         if not row:
             return None
         return ScoreSnapshot.from_storage_dict(row)
+
+    def get_active_snapshot(
+        self,
+        models: List[ModelConfig],
+        source: str = "artificial_analysis",
+    ) -> Tuple[Optional[ScoreSnapshot], Optional[str]]:
+        """Snapshot to rank with: the index version that scores the most configured models.
+
+        Returns (snapshot, note); the note explains when an older version was kept.
+        """
+        from modelmesh.core.scores.selection import choose_snapshot
+
+        rows = self.storage.get_newest_score_snapshots_per_version(source=source)
+        return choose_snapshot([ScoreSnapshot.from_storage_dict(r) for r in rows], models)

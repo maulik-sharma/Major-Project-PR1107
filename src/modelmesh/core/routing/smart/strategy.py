@@ -159,6 +159,7 @@ class SmartClefStrategy(Strategy):
             # Free-tier decision providers report no price, so the router call is logged at $0.
             "router_cost_usd": 0.0,
             "score_snapshot_id": active_snapshot.id if active_snapshot is not None else None,
+            "score_snapshot_note": kwargs.get("snapshot_note"),
             "stickiness_outcome": stickiness_outcome,
             "estimated_cost_usd": select_meta["estimated_cost_usd"],
             "notices": select_meta["notices"],
