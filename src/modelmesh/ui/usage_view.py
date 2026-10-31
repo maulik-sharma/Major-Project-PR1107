@@ -92,16 +92,17 @@ class UsageDialog(QDialog):
         for row, entry in enumerate(logs):
             tin = entry.get("tokens_in") or 0
             tout = entry.get("tokens_out") or 0
-            cost = entry.get("cost_usd") or 0.0
-            lat = (entry.get("latency_ms") or 0) / 1000.0
+            # Column names as stored in routing_log
+            cost = entry.get("estimated_cost") or 0.0
+            lat = (entry.get("total_latency_ms") or 0) / 1000.0
 
             total_toks += tin + tout
             total_cost += cost
 
             self.table.setItem(row, 0, QTableWidgetItem(entry.get("chosen_model_id") or "-"))
             self.table.setItem(row, 1, QTableWidgetItem(entry.get("chosen_endpoint_id") or "-"))
-            self.table.setItem(row, 2, QTableWidgetItem(entry.get("chosen_provider_id") or "-"))
-            self.table.setItem(row, 3, QTableWidgetItem(entry.get("strategy_name") or "-"))
+            self.table.setItem(row, 2, QTableWidgetItem(entry.get("provider_id") or "-"))
+            self.table.setItem(row, 3, QTableWidgetItem(entry.get("strategy") or "-"))
             self.table.setItem(row, 4, QTableWidgetItem(f"{tin} / {tout}"))
             self.table.setItem(row, 5, QTableWidgetItem(f"${cost:.5f}"))
             self.table.setItem(row, 6, QTableWidgetItem(f"{lat:.2f}s"))

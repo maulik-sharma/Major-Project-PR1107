@@ -119,7 +119,6 @@ class SidebarWidget(QWidget):
         self.usage_btn.setProperty("class", "sidebarActionBtn")
         self.usage_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.usage_btn.clicked.connect(self.usage_requested)
-        self.usage_btn.setVisible(False)
         footer_layout.addWidget(self.usage_btn)
 
         settings_btn = QPushButton("Settings")

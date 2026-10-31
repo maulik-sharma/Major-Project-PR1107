@@ -232,15 +232,20 @@ class MainWindow(QMainWindow):
             self.strategy_combo.blockSignals(False)
 
     def _populate_model_combo(self) -> None:
-        """Fill model selector dropdown with available models and endpoints."""
+        """Fill model selector with enabled models/endpoints, keeping the current choice."""
+        previous = self.model_combo.currentData()
+        self.model_combo.blockSignals(True)
         self.model_combo.clear()
         for model in self.registry.models():
+            endpoints = [ep for ep in model.endpoints if ep.enabled]
+            if not model.enabled or not endpoints:
+                continue
             self.model_combo.addItem(
                 f"{model.display_name} (Auto Provider)",
                 {"pinned_model_id": model.id},
             )
-            if len(model.endpoints) > 1:
-                for ep in model.endpoints:
+            if len(endpoints) > 1:
+                for ep in endpoints:
                     self.model_combo.addItem(
                         f"   ↳ {ep.provider} (${ep.price_in_per_mtok:.2f}/Mtok)",
                         {
@@ -248,6 +253,9 @@ class MainWindow(QMainWindow):
                             "pinned_endpoint_id": ep.id,
                         },
                     )
+        idx = self.model_combo.findData(previous) if previous else -1
+        self.model_combo.setCurrentIndex(max(0, idx))
+        self.model_combo.blockSignals(False)
 
     def _on_strategy_changed(self) -> None:
         """Toggle model combo box enabled state based on selected strategy and persist preference."""
@@ -463,6 +471,7 @@ class MainWindow(QMainWindow):
         dlg.settings_updated.connect(self._on_settings_updated)
         dlg.theme_changed.connect(self.apply_theme_mode)
         dlg.exec()
+        dlg.deleteLater()
 
     def apply_theme_mode(self, theme: str) -> None:
         """Apply light or dark theme dynamically across the entire window and chat view."""
@@ -486,6 +495,10 @@ class MainWindow(QMainWindow):
     def _on_settings_updated(self) -> None:
         self._apply_router_settings()
         self._populate_model_combo()
+        saved = str(get_app_settings().value("router/strategy", "smart_clef"))
+        idx = self.strategy_combo.findData(saved)
+        if idx >= 0 and idx != self.strategy_combo.currentIndex():
+            self.strategy_combo.setCurrentIndex(idx)
         self._on_skills_changed()
         self.skills_view.refresh_skills()
         if hasattr(self.router, "reload_config"):

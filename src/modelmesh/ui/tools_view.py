@@ -146,15 +146,13 @@ class ToolsView(QWidget):
         """Load workspace directory and tool states from persistent settings."""
         settings = get_app_settings()
         saved_ws = settings.value("workspace_folder")
-        if saved_ws and Path(saved_ws).exists():
+        if saved_ws and Path(saved_ws).is_dir():
             self.registry.set_workspace_folder(str(saved_ws))
 
-        # Restore disabled tools if saved
-        saved_disabled = settings.value("disabled_tools")
-        if saved_disabled and isinstance(saved_disabled, list):
-            for tool_name in saved_disabled:
-                if isinstance(tool_name, str):
-                    self.registry.set_tool_enabled(tool_name, False)
+        # type=list: INI storage turns a one-item list into a plain string otherwise.
+        for tool_name in settings.value("disabled_tools", [], type=list):
+            if isinstance(tool_name, str):
+                self.registry.set_tool_enabled(tool_name, False)
 
     def _init_ui(self) -> None:
         self.setObjectName("toolsView")
@@ -199,7 +197,8 @@ class ToolsView(QWidget):
         self.ws_input = QLineEdit(self.registry.workspace_folder)
         self.ws_input.setObjectName("toolsWorkspaceInput")
         self.ws_input.setPlaceholderText("Path to project workspace folder...")
-        self.ws_input.textChanged.connect(self._on_ws_text_changed)
+        # Commit only when editing finishes: partial paths like "/" must never become the workspace.
+        self.ws_input.editingFinished.connect(self._on_ws_edit_finished)
         ws_layout.addWidget(self.ws_input, stretch=1)
 
         browse_btn = QPushButton("Browse...")
@@ -326,22 +325,27 @@ class ToolsView(QWidget):
             dlg = ToolDetailDialog(tool_spec=spec, tool_registry=self.registry, parent=self)
             dlg.exec()
 
-    def _on_ws_text_changed(self, text: str) -> None:
-        folder = text.strip()
-        if folder and Path(folder).exists():
-            self.registry.set_workspace_folder(folder)
-            settings = get_app_settings()
-            settings.setValue("workspace_folder", folder)
-            settings.sync()
-            self.tools_changed.emit()
+    def _on_ws_edit_finished(self) -> None:
+        folder = self.ws_input.text().strip()
+        if folder == self.registry.workspace_folder:
+            return
+        if not folder or not Path(folder).is_dir():
+            self.ws_input.setToolTip(f"Not a folder: {folder or '(empty)'}. Workspace unchanged.")
+            self.ws_input.setText(self.registry.workspace_folder)
+            return
+        self._set_workspace(folder)
 
     def _on_browse_workspace(self) -> None:
         current = self.ws_input.text() or str(Path.cwd())
         folder = QFileDialog.getExistingDirectory(self, "Select Workspace Directory", current)
         if folder:
             self.ws_input.setText(folder)
-            self.registry.set_workspace_folder(folder)
-            settings = get_app_settings()
-            settings.setValue("workspace_folder", folder)
-            settings.sync()
-            self.tools_changed.emit()
+            self._set_workspace(folder)
+
+    def _set_workspace(self, folder: str) -> None:
+        self.ws_input.setToolTip("")
+        self.registry.set_workspace_folder(folder)
+        settings = get_app_settings()
+        settings.setValue("workspace_folder", folder)
+        settings.sync()
+        self.tools_changed.emit()

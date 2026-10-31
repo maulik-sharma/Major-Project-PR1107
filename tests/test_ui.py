@@ -178,6 +178,16 @@ def test_usage_dialog(qapp, tmp_path: Path) -> None:
     dlg = UsageDialog(storage=storage)
     assert dlg.table.columnCount() == 7
 
+    # A real logged turn shows its provider, strategy, cost and latency (not "-" / $0).
+    reg = create_test_registry()
+    router = Router(registry=reg)
+    engine = ChatEngine(registry=reg, router=router, storage=storage)
+    list(engine.run_turn(ChatRequest(messages=[Message.from_text("user", "hi")]), strategy_name="cheapest_first"))
+    dlg.refresh()
+    assert dlg.table.item(0, 2).text() == "mock"
+    assert dlg.table.item(0, 3).text() == "cheapest_first"
+    assert dlg.table.item(0, 0).text() == "mock-fast"
+
 
 
 
@@ -312,45 +322,38 @@ def test_unclosed_thought_recovery_in_main_window(qapp, tmp_path: Path) -> None:
 
 
 
-def test_tools_tab_and_skills_management(qapp, tmp_path: Path) -> None:
-    from modelmesh.core.skills import SkillLoader
+def test_tools_view_workspace_and_disabled_tools_persist(qapp, tmp_path: Path) -> None:
     from modelmesh.core.tools.builtin import create_builtin_registry
-    from modelmesh.ui.settings.tools_tab import ToolsTab
-
-    skills_dir = tmp_path / "skills"
-    skills_dir.mkdir()
-    skill1_dir = skills_dir / "my-skill"
-    skill1_dir.mkdir()
-    (skill1_dir / "SKILL.md").write_text(
-        "---\nname: my-skill\ndescription: Test skill.\n---\nBody here.",
-        encoding="utf-8",
-    )
+    from modelmesh.ui.settings.tools_tab import get_app_settings
+    from modelmesh.ui.tools_view import ToolsView
 
     ws_dir = tmp_path / "workspace"
     ws_dir.mkdir()
-
     tool_reg = create_builtin_registry(workspace_folder=str(ws_dir))
-    skill_loader = SkillLoader(skills_dir=skills_dir)
+    reg = create_test_registry()
+    engine = ChatEngine(registry=reg, router=Router(registry=reg), tool_registry=tool_reg)
+    view = ToolsView(engine=engine)
 
-    tab = ToolsTab(tool_registry=tool_reg, skill_loader=skill_loader)
-    assert tab.skills_table.rowCount() == 1
-    assert tab.skills_table.item(0, 0).text() == "my-skill"
+    # A partial path typed mid-edit (or any non-folder) never becomes the workspace.
+    view.ws_input.setText("/")
+    assert tool_reg.workspace_folder == str(ws_dir)
+    view.ws_input.setText(str(tmp_path / "does-not-exist"))
+    view.ws_input.editingFinished.emit()
+    assert tool_reg.workspace_folder == str(ws_dir)
+    assert view.ws_input.text() == str(ws_dir)
 
-    # Test changing workspace folder text and QSettings persistence
-    from modelmesh.ui.settings.tools_tab import get_app_settings, set_custom_settings_path
-    set_custom_settings_path(tmp_path / "settings.ini")
     new_ws = tmp_path / "new_ws"
     new_ws.mkdir()
-    tab.ws_input.setText(str(new_ws))
+    view.ws_input.setText(str(new_ws))
+    view.ws_input.editingFinished.emit()
     assert tool_reg.workspace_folder == str(new_ws)
     assert get_app_settings().value("workspace_folder") == str(new_ws)
-    set_custom_settings_path(None)
 
-    # Test tool toggling
-    tab.calc_check.setChecked(False)
-    assert tool_reg.is_tool_enabled("calculator") is False
-    tab.calc_check.setChecked(True)
-    assert tool_reg.is_tool_enabled("calculator") is True
+    # A single disabled tool survives a restart (INI one-item list round-trip).
+    get_app_settings().setValue("disabled_tools", ["calculator"])
+    fresh_reg = create_builtin_registry(workspace_folder=str(ws_dir))
+    ToolsView(engine=ChatEngine(registry=reg, router=Router(registry=reg), tool_registry=fresh_reg))
+    assert fresh_reg.is_tool_enabled("calculator") is False
 
 
 def test_skills_composer_mention_and_navigation(qapp, tmp_path: Path) -> None:
@@ -838,7 +841,9 @@ def test_routing_tab_and_decision_worker(qapp, tmp_path: Path) -> None:
         # 1. Update bias and slack
         tab.bias_spin.setValue(orig_bias + 0.20)
         tab.slack_spin.setValue(orig_slack + 0.05)
-        assert len(events) >= 2
+        assert events == []  # debounced: nothing saved mid-edit
+        tab.flush()
+        assert len(events) == 1
 
         cfg = load_routing_config()
         assert pytest.approx(cfg.need.bias, abs=0.001) == orig_bias + 0.20
@@ -867,6 +872,7 @@ def test_routing_tab_and_decision_worker(qapp, tmp_path: Path) -> None:
     finally:
         tab.bias_spin.setValue(orig_bias)
         tab.slack_spin.setValue(orig_slack)
+        tab.flush()
 
 
 

@@ -82,9 +82,24 @@ class SettingsDialog(QDialog):
         layout.addWidget(buttons)
 
     def _on_tab_config_changed(self) -> None:
-        self.models_tab.refresh()
-        self.providers_tab.refresh()
-        self.scores_tab.refresh()
-        self.routing_tab.refresh()
+        # Refresh the other tabs only: the sender already shows its own state, and
+        # reloading it would reset what the user is in the middle of editing.
+        sender = self.sender()
+        for tab in (self.models_tab, self.providers_tab, self.scores_tab, self.routing_tab):
+            if tab is not sender:
+                tab.refresh()
         self.settings_updated.emit()
+
+    def done(self, code: int) -> None:
+        """Apply pending edits and let background workers finish before closing."""
+        self.routing_tab.flush()
+        for worker in (
+            getattr(self.scores_tab, "_refresh_worker", None),
+            getattr(self.routing_tab, "_test_worker", None),
+            getattr(self.providers_tab, "_test_worker", None),
+            getattr(self.providers_tab, "_fetch_worker", None),
+        ):
+            if worker is not None and worker.isRunning():
+                worker.wait(15000)
+        super().done(code)
 

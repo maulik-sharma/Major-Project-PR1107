@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -40,6 +40,11 @@ class RoutingTab(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._test_worker: Optional[DecisionTestWorker] = None
         self.routing_config: SmartRoutingConfig = load_routing_config()
+        self._pending_yaml_save = False
+        self._save_timer = QTimer(self)
+        self._save_timer.setSingleShot(True)
+        self._save_timer.setInterval(400)
+        self._save_timer.timeout.connect(self._apply_pending)
 
         self._setup_ui()
         self.refresh()
@@ -173,6 +178,7 @@ class RoutingTab(QWidget):
 
     def refresh(self) -> None:
         """Reload configuration from disk and update UI controls without emitting false changes."""
+        self.flush()
         self.routing_config = load_routing_config()
         settings = get_app_settings()
 
@@ -221,6 +227,24 @@ class RoutingTab(QWidget):
         finally:
             self._block_all_signals(False)
 
+    def _changed(self, save_yaml: bool = True) -> None:
+        """Debounce rapid edits (spin-box arrows): save and notify once typing pauses."""
+        self._pending_yaml_save = self._pending_yaml_save or save_yaml
+        self._save_timer.start()
+
+    def flush(self) -> None:
+        """Apply any pending debounced change now (called when the dialog closes)."""
+        if not self._save_timer.isActive():
+            return
+        self._save_timer.stop()
+        self._apply_pending()
+
+    def _apply_pending(self) -> None:
+        if self._pending_yaml_save:
+            save_routing_config(self.routing_config)
+            self._pending_yaml_save = False
+        self.config_changed.emit()
+
     def _block_all_signals(self, block: bool) -> None:
         for w in (
             self.default_strat,
@@ -248,11 +272,11 @@ class RoutingTab(QWidget):
 
     def _on_safety_margin_changed(self, val: int) -> None:
         get_app_settings().setValue("router/safety_margin", val)
-        self.config_changed.emit()
+        self._changed(save_yaml=False)
 
     def _on_cooldown_changed(self, val: int) -> None:
         get_app_settings().setValue("router/cooldown_sec", val)
-        self.config_changed.emit()
+        self._changed(save_yaml=False)
 
     def _on_decision_provider_changed(self) -> None:
         prov = self.decision_provider_combo.currentData() or self.routing_config.decision.active
@@ -273,18 +297,15 @@ class RoutingTab(QWidget):
         self.routing_config.need.weights.difficulty = self.diff_weight_spin.value()
         self.routing_config.need.weights.precision = self.prec_weight_spin.value()
         self.routing_config.need.weights.larger_model_benefit = self.benefit_weight_spin.value()
-        save_routing_config(self.routing_config)
-        self.config_changed.emit()
+        self._changed()
 
     def _on_bias_changed(self, val: float) -> None:
         self.routing_config.need.bias = val
-        save_routing_config(self.routing_config)
-        self.config_changed.emit()
+        self._changed()
 
     def _on_slack_changed(self, val: float) -> None:
         self.routing_config.need.slack = val
-        save_routing_config(self.routing_config)
-        self.config_changed.emit()
+        self._changed()
 
     def _on_unscored_policy_changed(self) -> None:
         pol = self.unscored_combo.currentData() or "exclude"
