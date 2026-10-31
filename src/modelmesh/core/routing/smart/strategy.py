@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from modelmesh.core.config.routing_config import SmartRoutingConfig, load_routing_config
-from modelmesh.core.cost import estimate_request_tokens
+from modelmesh.core.cost import estimate_request_tokens, expected_output_tokens
 from modelmesh.core.routing.base import Strategy, register_strategy
 from modelmesh.core.routing.smart.scoring import compute_bar, compute_need
 from modelmesh.core.routing.smart.selector import select_smart_candidate
@@ -86,7 +86,7 @@ class SmartClefStrategy(Strategy):
 
         # 6. Estimate token counts
         tokens_in_est = estimate_request_tokens(request)
-        tokens_out_est = int(request.max_tokens or 1000)
+        tokens_out_est = expected_output_tokens(request)
 
         # 7. Execute pure selection
         chosen, fallback_chain, select_meta = select_smart_candidate(

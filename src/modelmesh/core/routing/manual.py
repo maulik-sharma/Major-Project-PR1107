@@ -61,9 +61,11 @@ class ManualStrategy(Strategy):
         elif pinned_model_id:
             # Pinned logical model: allow failover across providers serving the SAME model only
             if pinned_model_id not in model_groups:
+                all_candidates: List[Candidate] = kwargs.get("all_candidates", [])
                 matching_reasons = [
-                    r for ep, r in rejections.items()
-                    if ep.startswith(f"{pinned_model_id}@") or f"Model '{pinned_model_id}'" in r or f"'{pinned_model_id}'" in r
+                    rejections[c.endpoint_id]
+                    for c in all_candidates
+                    if c.model_id == pinned_model_id and c.endpoint_id in rejections
                 ]
                 rej_reason = matching_reasons[0] if matching_reasons else None
                 msg = f"Selected model '{pinned_model_id}' is not eligible for this request."

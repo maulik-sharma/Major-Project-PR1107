@@ -8,6 +8,7 @@ from modelmesh.core.errors import RoutingError
 from modelmesh.core.registry import ModelRegistry
 from modelmesh.core.routing.base import get_strategy
 from modelmesh.core.routing.features import (
+    COOLING_DOWN_REASON,
     extract_request_features,
     filter_eligible_candidates,
 )
@@ -24,10 +25,12 @@ class Router:
         health_tracker: Optional[EndpointHealthTracker] = None,
         decision_service: Optional[Any] = None,
         storage: Optional[Any] = None,
+        safety_margin_tokens: int = 500,
     ) -> None:
         self.registry = registry
         self.health_tracker = health_tracker or EndpointHealthTracker()
         self.storage = storage
+        self.safety_margin_tokens = safety_margin_tokens
         self._decision_service = decision_service
 
     @property
@@ -42,6 +45,12 @@ class Router:
     def reload_config(self) -> None:
         """Reset cached decision service to reload updated routing configuration."""
         self._decision_service = None
+
+    def apply_settings(self, cooldown_seconds: float, safety_margin_tokens: int) -> None:
+        """Apply user router settings and forget health state (keys may have changed)."""
+        self.health_tracker.cooldown_seconds = cooldown_seconds
+        self.safety_margin_tokens = safety_margin_tokens
+        self.health_tracker.clear_blacklist()
 
     def route(
         self,
@@ -62,7 +71,18 @@ class Router:
             candidates=all_candidates,
             request=request,
             health_tracker=self.health_tracker,
+            safety_margin_tokens=self.safety_margin_tokens,
         )
+
+        # An explicit pin overrides the cooldown hint (but never an auth blacklist).
+        if pinned_model_id or pinned_endpoint_id:
+            for cand in all_candidates:
+                pinned = cand.endpoint_id == pinned_endpoint_id or (
+                    not pinned_endpoint_id and cand.model_id == pinned_model_id
+                )
+                if pinned and rejections.get(cand.endpoint_id) == COOLING_DOWN_REASON:
+                    rejections.pop(cand.endpoint_id)
+                    eligible.append(cand)
 
         if not eligible:
             reasons_summary = "; ".join(f"{ep}: {reason}" for ep, reason in rejections.items())
@@ -114,6 +134,7 @@ class Router:
             pinned_endpoint_id=pinned_endpoint_id,
             seed=seed,
             rejections=rejections,
+            all_candidates=all_candidates,
             **kwargs,
         )
 

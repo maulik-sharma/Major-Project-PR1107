@@ -85,8 +85,8 @@ class ProviderError(ModelMeshError):
         if should_skip_model_siblings is not None:
             self.should_skip_model_siblings = should_skip_model_siblings
         else:
-            # Model-level issues skip siblings of the same model
-            self.should_skip_model_siblings = category in ("context_length", "bad_request")
+            # Context overflow is a property of the model; other errors may be provider-specific
+            self.should_skip_model_siblings = category == "context_length"
 
     def __str__(self) -> str:
         provider_str = f" [{self.provider_id}]" if self.provider_id else ""
@@ -173,7 +173,7 @@ class BadRequestError(ProviderError):
             provider_id=provider_id,
             status_code=status_code,
             raw_error=raw_error,
-            should_skip_model_siblings=True,
+            should_skip_model_siblings=False,  # may be one provider's quirk
         )
 
 

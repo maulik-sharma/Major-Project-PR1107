@@ -1,141 +1,121 @@
-"""In-memory endpoint health tracking for consecutive failure cooldowns."""
+"""In-memory, per-endpoint health tracking: cooldowns for transient failures, blacklist for auth."""
 
 from __future__ import annotations
 
 import threading
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+
+# Failures that say nothing about the endpoint's health (the request itself was the problem).
+_REQUEST_CATEGORIES = frozenset({"bad_request", "context_length"})
 
 
 class EndpointHealthTracker:
-    """Tracks consecutive errors and manages session-level blacklisting for failed endpoints and models."""
+    """Tracks endpoint failures for the current session.
 
-    def __init__(self, failure_threshold: int = 1, cooldown_seconds: float = 60.0) -> None:
-        self.failure_threshold = failure_threshold
+    Health is tracked per endpoint, never per model, so one provider's outage
+    never hides the same model served by another provider.
+
+    - ``auth`` failures blacklist the endpoint until :meth:`clear_blacklist`
+      (called when settings/keys change).
+    - ``rate_limit`` puts the endpoint in cooldown immediately.
+    - Other failures (``network``, ``server``, ``unknown``) put it in cooldown
+      once ``failure_threshold`` consecutive failures are reached.
+    - ``bad_request`` and ``context_length`` are not recorded.
+    """
+
+    def __init__(self, failure_threshold: int = 2, cooldown_seconds: float = 60.0) -> None:
+        self.failure_threshold = max(1, failure_threshold)
         self.cooldown_seconds = cooldown_seconds
         self._consecutive_failures: Dict[str, int] = {}
         self._unhealthy_until: Dict[str, float] = {}
         self._blacklisted_endpoints: Dict[str, str] = {}  # endpoint_id -> reason
-        self._blacklisted_models: Dict[str, str] = {}      # model_id -> reason
         self._lock = threading.Lock()
 
     def record_failure(
         self,
         endpoint_id: str,
-        model_id: Optional[str] = None,
+        category: str = "unknown",
         reason: Optional[str] = None,
     ) -> None:
-        """Record an endpoint query failure and automatically blacklist it and its model for this session."""
+        """Record a failed request against an endpoint, classified by error category."""
+        if category in _REQUEST_CATEGORIES:
+            return
         with self._lock:
+            if category == "auth":
+                self._blacklisted_endpoints[endpoint_id] = reason or "Authentication failed"
+                return
             count = self._consecutive_failures.get(endpoint_id, 0) + 1
             self._consecutive_failures[endpoint_id] = count
-
-            if count >= self.failure_threshold:
-                err_msg = reason or "Endpoint failed during request"
-                self._blacklisted_endpoints[endpoint_id] = err_msg
-                if model_id:
-                    self._blacklisted_models[model_id] = err_msg
+            if category == "rate_limit" or count >= self.failure_threshold:
                 self._unhealthy_until[endpoint_id] = time.time() + self.cooldown_seconds
 
-    def record_success(
-        self,
-        endpoint_id: str,
-        model_id: Optional[str] = None,
-    ) -> None:
-        """Reset consecutive failures and clear any cooldown or blacklist for an endpoint."""
+    def record_success(self, endpoint_id: str) -> None:
+        """Reset failure count and clear any cooldown or blacklist for an endpoint."""
         with self._lock:
             self._consecutive_failures.pop(endpoint_id, None)
             self._unhealthy_until.pop(endpoint_id, None)
             self._blacklisted_endpoints.pop(endpoint_id, None)
-            if model_id:
-                self._blacklisted_models.pop(model_id, None)
-
-    def blacklist_model(self, model_id: str, reason: Optional[str] = None) -> None:
-        """Explicitly blacklist a model for the remainder of this session."""
-        with self._lock:
-            self._blacklisted_models[model_id] = reason or "Blacklisted for session"
 
     def blacklist_endpoint(self, endpoint_id: str, reason: Optional[str] = None) -> None:
-        """Explicitly blacklist an endpoint for the remainder of this session."""
+        """Explicitly blacklist an endpoint until the blacklist is cleared."""
         with self._lock:
             self._blacklisted_endpoints[endpoint_id] = reason or "Blacklisted for session"
 
-    def is_blacklisted(
-        self,
-        endpoint_id: Optional[str] = None,
-        model_id: Optional[str] = None,
-    ) -> bool:
-        """Check if an endpoint or model is currently blacklisted for this session."""
+    def is_blacklisted(self, endpoint_id: str) -> bool:
+        """Return True if the endpoint is blacklisted for this session."""
         with self._lock:
-            if model_id and model_id in self._blacklisted_models:
-                return True
-            if endpoint_id and endpoint_id in self._blacklisted_endpoints:
-                return True
-            return False
+            return endpoint_id in self._blacklisted_endpoints
 
-    def get_blacklist_reason(
-        self,
-        endpoint_id: Optional[str] = None,
-        model_id: Optional[str] = None,
-    ) -> Optional[str]:
-        """Get the reason why an endpoint or model was blacklisted in this session."""
+    def get_blacklist_reason(self, endpoint_id: str) -> Optional[str]:
+        """Return why an endpoint was blacklisted, or None."""
         with self._lock:
-            if model_id and model_id in self._blacklisted_models:
-                return self._blacklisted_models[model_id]
-            if endpoint_id and endpoint_id in self._blacklisted_endpoints:
-                return self._blacklisted_endpoints[endpoint_id]
-            return None
+            return self._blacklisted_endpoints.get(endpoint_id)
 
-    def is_healthy(
-        self,
-        endpoint_id: str,
-        model_id: Optional[str] = None,
-    ) -> bool:
-        """Check if an endpoint is currently considered healthy (not blacklisted or cooling down)."""
+    def is_cooling_down(self, endpoint_id: str) -> bool:
+        """Return True while an endpoint is inside its failure cooldown window."""
         with self._lock:
-            if model_id and model_id in self._blacklisted_models:
-                return False
+            return self._cooling_down_locked(endpoint_id)
+
+    def is_healthy(self, endpoint_id: str) -> bool:
+        """Return True if the endpoint is neither blacklisted nor cooling down."""
+        with self._lock:
             if endpoint_id in self._blacklisted_endpoints:
                 return False
-
-            unhealthy_until = self._unhealthy_until.get(endpoint_id)
-            if unhealthy_until is None:
-                return True
-            if time.time() >= unhealthy_until:
-                # Cooldown expired
-                self._unhealthy_until.pop(endpoint_id, None)
-                self._consecutive_failures.pop(endpoint_id, None)
-                return True
-            return False
-
-    def get_blacklisted_models(self) -> Dict[str, str]:
-        """Return a snapshot dictionary of all models blacklisted in this session."""
-        with self._lock:
-            return dict(self._blacklisted_models)
+            return not self._cooling_down_locked(endpoint_id)
 
     def get_blacklisted_endpoints(self) -> Dict[str, str]:
-        """Return a snapshot dictionary of all endpoints blacklisted in this session."""
+        """Return a snapshot of all blacklisted endpoints and their reasons."""
         with self._lock:
             return dict(self._blacklisted_endpoints)
 
     def clear_blacklist(self) -> None:
-        """Reset all session blacklists and health cooldowns."""
+        """Reset all blacklists, failure counts, and cooldowns."""
         with self._lock:
-            self._blacklisted_models.clear()
             self._blacklisted_endpoints.clear()
             self._consecutive_failures.clear()
             self._unhealthy_until.clear()
 
-    def get_status(self, endpoint_id: str, model_id: Optional[str] = None) -> Dict[str, Any]:
-        """Return status dict for UI indicators."""
+    def get_status(self, endpoint_id: str) -> Dict[str, Any]:
+        """Return a status dict for UI indicators."""
         with self._lock:
-            blacklisted = self.is_blacklisted(endpoint_id=endpoint_id, model_id=model_id)
-            is_ok = self.is_healthy(endpoint_id=endpoint_id, model_id=model_id)
-            failures = self._consecutive_failures.get(endpoint_id, 0)
-            reason = self.get_blacklist_reason(endpoint_id=endpoint_id, model_id=model_id)
+            blacklisted = endpoint_id in self._blacklisted_endpoints
+            cooling = self._cooling_down_locked(endpoint_id)
             return {
-                "healthy": is_ok,
+                "healthy": not blacklisted and not cooling,
                 "blacklisted": blacklisted,
-                "blacklist_reason": reason,
-                "consecutive_failures": failures,
+                "cooling_down": cooling,
+                "blacklist_reason": self._blacklisted_endpoints.get(endpoint_id),
+                "consecutive_failures": self._consecutive_failures.get(endpoint_id, 0),
             }
+
+    def _cooling_down_locked(self, endpoint_id: str) -> bool:
+        """Cooldown check; caller must hold the lock. Expired cooldowns are cleared."""
+        until = self._unhealthy_until.get(endpoint_id)
+        if until is None:
+            return False
+        if time.time() >= until:
+            self._unhealthy_until.pop(endpoint_id, None)
+            self._consecutive_failures.pop(endpoint_id, None)
+            return False
+        return True

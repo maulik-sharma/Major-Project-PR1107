@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
-from modelmesh.core.cost import estimate_request_cost
+from modelmesh.core.cost import estimate_request_cost, expected_output_tokens
 from modelmesh.core.errors import RoutingError
 from modelmesh.core.routing.base import (
     Strategy,
@@ -29,7 +29,7 @@ class ExpensiveFirstStrategy(Strategy):
         if not eligible_candidates:
             raise RoutingError("No eligible candidates available for expensive-first routing.")
 
-        expected_output = kwargs.get("expected_output_tokens", 500)
+        expected_output = kwargs.get("expected_output_tokens") or expected_output_tokens(request)
 
         # Group candidates by model_id
         model_groups: Dict[str, List[Candidate]] = {}
@@ -47,7 +47,7 @@ class ExpensiveFirstStrategy(Strategy):
                 request,
                 cheapest_cand.price_in_per_mtok,
                 cheapest_cand.price_out_per_mtok,
-                expected_output_tokens=expected_output,
+                output_tokens=expected_output,
             )
 
             # Endpoints within model ordered by model's endpoint_policy

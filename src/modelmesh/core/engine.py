@@ -41,6 +41,16 @@ class ChatEngine:
         self.tool_registry = tool_registry
         self.skill_loader = skill_loader
 
+    def _health_tracker(self) -> Optional[Any]:
+        """Return the router's endpoint health tracker, if any."""
+        return getattr(self.router, "health_tracker", None) if self.router is not None else None
+
+    def _record_failure(self, cand: Candidate, category: str, reason: str) -> None:
+        """Report a failed attempt on an endpoint to the health tracker."""
+        tracker = self._health_tracker()
+        if tracker is not None:
+            tracker.record_failure(cand.endpoint_id, category=category, reason=reason)
+
     def run_turn(
         self,
         request: ChatRequest,
@@ -233,15 +243,12 @@ class ChatEngine:
                             yield event
 
                 except ProviderError as exc:
+                    if cancel_event and cancel_event.is_set():
+                        return  # A user cancel is not a provider failure.
                     last_error = exc
                     last_failed_cand = cand
                     candidate_failed = True
-                    if self.router is not None and hasattr(self.router, "health_tracker") and self.router.health_tracker:
-                        self.router.health_tracker.record_failure(
-                            endpoint_id=cand.endpoint_id,
-                            model_id=cand.model_id,
-                            reason=str(exc),
-                        )
+                    self._record_failure(cand, exc.category, str(exc))
 
                     # If output already started streaming or iteration > 0, do not silently failover
                     if has_started_output or iteration > 0:
@@ -263,6 +270,8 @@ class ChatEngine:
                     break
 
                 except Exception as exc:
+                    if cancel_event and cancel_event.is_set():
+                        return
                     last_error = ProviderError(
                         message=f"Unexpected error: {exc}",
                         category="unknown",
@@ -271,12 +280,7 @@ class ChatEngine:
                     )
                     last_failed_cand = cand
                     candidate_failed = True
-                    if self.router is not None and hasattr(self.router, "health_tracker") and self.router.health_tracker:
-                        self.router.health_tracker.record_failure(
-                            endpoint_id=cand.endpoint_id,
-                            model_id=cand.model_id,
-                            reason=str(last_error),
-                        )
+                    self._record_failure(cand, "unknown", str(last_error))
 
                     if has_started_output or iteration > 0:
                         yield StreamEvent(
@@ -402,11 +406,9 @@ class ChatEngine:
             )
             return
 
-        if self.router is not None and hasattr(self.router, "health_tracker") and self.router.health_tracker:
-            self.router.health_tracker.record_success(
-                endpoint_id=successful_candidate.endpoint_id,
-                model_id=successful_candidate.model_id,
-            )
+        tracker = self._health_tracker()
+        if tracker is not None:
+            tracker.record_success(successful_candidate.endpoint_id)
 
         final_usage = Usage(
             input_tokens=total_input_tokens,

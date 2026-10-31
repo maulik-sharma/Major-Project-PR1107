@@ -5,6 +5,15 @@ from __future__ import annotations
 from typing import Optional
 from modelmesh.core.types import ChatRequest, ImagePart, TextPart, Usage
 
+# Assumed answer length when the request sets no max_tokens. Shared by every
+# strategy so cost comparisons and context checks agree.
+DEFAULT_OUTPUT_TOKENS_ESTIMATE = 1000
+
+
+def expected_output_tokens(request: ChatRequest) -> int:
+    """Return the output-token budget to assume for routing a request."""
+    return int(request.max_tokens or DEFAULT_OUTPUT_TOKENS_ESTIMATE)
+
 
 def estimate_tokens(text: str) -> int:
     """Fast character-based heuristic token estimator (~4 characters per token)."""
@@ -56,9 +65,10 @@ def estimate_request_cost(
     request: ChatRequest,
     price_in_per_mtok: float,
     price_out_per_mtok: float,
-    expected_output_tokens: int = 500,
+    output_tokens: Optional[int] = None,
 ) -> float:
     """Estimate total cost of a request before execution for routing comparison."""
     est_in = estimate_request_tokens(request)
-    usage = Usage(input_tokens=est_in, output_tokens=expected_output_tokens, estimated=True)
+    est_out = output_tokens if output_tokens is not None else expected_output_tokens(request)
+    usage = Usage(input_tokens=est_in, output_tokens=est_out, estimated=True)
     return calculate_cost(usage, price_in_per_mtok, price_out_per_mtok)

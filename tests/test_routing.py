@@ -465,8 +465,8 @@ def test_auto_strategy_excludes_mock_when_real_providers_exist(monkeypatch) -> N
     assert manual_decision.chosen_candidate.model_id == "mock_expensive"
 
 
-def test_session_blacklisting_on_failure_across_all_strategies() -> None:
-    """Verify that when a model query fails, it is blacklisted for the session across all strategies."""
+def test_failed_endpoint_cools_down_across_all_strategies() -> None:
+    """A server failure puts the endpoint in cooldown; every strategy skips it until it recovers."""
     reg = ModelRegistry()
     reg.add_provider(ProviderConfig(id="prov_a", protocol="mock"))
     reg.add_provider(ProviderConfig(id="prov_b", protocol="mock"))
@@ -535,10 +535,9 @@ def test_session_blacklisting_on_failure_across_all_strategies() -> None:
     done_ev = next(e for e in events if e.type == StreamEventType.DONE)
     assert done_ev.data["candidate"].model_id == "healthy_mid_model"
 
-    # Verify that failing_cheap_model and cheap@prov_a are now blacklisted in the session tracker
-    assert tracker.is_blacklisted(endpoint_id="cheap@prov_a", model_id="failing_cheap_model")
-    assert "failing_cheap_model" in tracker.get_blacklisted_models()
-    assert "cheap@prov_a" in tracker.get_blacklisted_endpoints()
+    # The failing endpoint is cooling down (not blacklisted: server errors are transient)
+    assert tracker.is_cooling_down("cheap@prov_a")
+    assert not tracker.is_blacklisted("cheap@prov_a")
 
     # Turn 2: Test cheapest_first - must pick healthy_mid_model directly without even trying failing_cheap_model
     req2 = ChatRequest(messages=[Message.from_text("user", "Hello turn 2")])
@@ -557,9 +556,108 @@ def test_session_blacklisting_on_failure_across_all_strategies() -> None:
         assert dec_rand.chosen_candidate.model_id in ["healthy_mid_model", "healthy_exp_model"]
         assert all(c.model_id != "failing_cheap_model" for c in dec_rand.fallback_chain)
 
-    # Turn 5: Test manual - attempting to manually route to the blacklisted model must fail with RoutingError
+    # Turn 5: An explicit manual pin overrides the cooldown hint
+    dec_manual = router.route(request=req2, strategy_name="manual", pinned_model_id="failing_cheap_model")
+    assert dec_manual.chosen_candidate.endpoint_id == "cheap@prov_a"
+
+    # ...but an auth blacklist still blocks it, with the reason shown
+    tracker.record_failure("cheap@prov_a", category="auth", reason="Invalid API key")
     with pytest.raises(RoutingError) as exc_info:
         router.route(request=req2, strategy_name="manual", pinned_model_id="failing_cheap_model")
-    assert "blacklisted for this session" in str(exc_info.value).lower()
+    assert "invalid api key" in str(exc_info.value).lower()
 
 
+
+
+def test_health_tracker_failure_categories() -> None:
+    """Auth blacklists, rate limits cool down at once, request errors are ignored."""
+    tracker = EndpointHealthTracker(failure_threshold=2, cooldown_seconds=60.0)
+
+    tracker.record_failure("a@p", category="bad_request")
+    tracker.record_failure("a@p", category="context_length")
+    assert tracker.is_healthy("a@p")
+    assert tracker.get_status("a@p")["consecutive_failures"] == 0
+
+    tracker.record_failure("b@p", category="rate_limit")
+    assert tracker.is_cooling_down("b@p")
+
+    tracker.record_failure("c@p", category="network")
+    assert tracker.is_healthy("c@p")
+    tracker.record_failure("c@p", category="server")
+    assert tracker.is_cooling_down("c@p")
+
+    tracker.record_failure("d@p", category="auth", reason="bad key")
+    assert tracker.is_blacklisted("d@p")
+    assert tracker.get_status("d@p")["blacklist_reason"] == "bad key"
+
+    tracker.clear_blacklist()
+    assert all(tracker.is_healthy(e) for e in ("a@p", "b@p", "c@p", "d@p"))
+
+
+def test_health_cooldown_expires(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Endpoints recover on their own once the cooldown window passes."""
+    from modelmesh.core.routing import health
+
+    now = [1000.0]
+    monkeypatch.setattr(health.time, "time", lambda: now[0])
+    tracker = EndpointHealthTracker(failure_threshold=1, cooldown_seconds=30.0)
+    tracker.record_failure("a@p", category="server")
+    assert not tracker.is_healthy("a@p")
+    now[0] += 31
+    assert tracker.is_healthy("a@p")
+
+
+def test_health_get_status_does_not_deadlock() -> None:
+    """get_status must not re-acquire the tracker's non-reentrant lock."""
+    import threading
+
+    tracker = EndpointHealthTracker()
+    tracker.record_failure("a@p", category="auth")
+    result: dict = {}
+    t = threading.Thread(target=lambda: result.update(tracker.get_status("a@p")), daemon=True)
+    t.start()
+    t.join(timeout=2)
+    assert not t.is_alive()
+    assert result["blacklisted"] is True
+
+
+def test_failure_keeps_sibling_endpoints_of_same_model() -> None:
+    """One provider failing must not hide the same model on another provider."""
+    reg = create_test_registry()
+    tracker = EndpointHealthTracker(failure_threshold=1)
+    router = Router(registry=reg, health_tracker=tracker)
+    tracker.record_failure("cheap@prov_a", category="server")
+    req = ChatRequest(messages=[Message.from_text("user", "Hello")])
+    dec = router.route(request=req, strategy_name="cheapest_first")
+    assert dec.chosen_candidate.endpoint_id == "cheap@prov_b"
+
+
+def test_cancelled_turn_does_not_penalise_endpoint() -> None:
+    """A provider error raised because the user cancelled is not a health failure."""
+    import threading
+
+    from modelmesh.core.errors import ProviderError
+    from modelmesh.core.providers import base as provider_base
+
+    reg = create_test_registry()
+    tracker = EndpointHealthTracker(failure_threshold=1)
+    router = Router(registry=reg, health_tracker=tracker)
+    engine = ChatEngine(registry=reg, router=router)
+    cancel = threading.Event()
+
+    class _CancellingAdapter:
+        def stream_chat(self, request, candidate, cancel_event=None):  # type: ignore[no-untyped-def]
+            cancel.set()
+            raise ProviderError("stream aborted", category="network")
+            yield  # pragma: no cover
+
+    original = provider_base.get_adapter
+    try:
+        import modelmesh.core.engine as engine_mod
+
+        engine_mod.get_adapter = lambda protocol: _CancellingAdapter()  # type: ignore[assignment]
+        req = ChatRequest(messages=[Message.from_text("user", "Hello")])
+        list(engine.run_turn(request=req, strategy_name="cheapest_first", cancel_event=cancel))
+    finally:
+        engine_mod.get_adapter = original  # type: ignore[assignment]
+    assert all(tracker.is_healthy(c.endpoint_id) for c in reg.candidates())

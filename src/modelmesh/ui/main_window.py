@@ -81,6 +81,7 @@ class MainWindow(QMainWindow):
             "system_prompt": "",
         }
 
+        self._apply_router_settings()
         self._init_ui()
         self._load_initial_data()
 
@@ -631,7 +632,18 @@ class MainWindow(QMainWindow):
             QColor("#ffffff" if theme == "light" else "#141417")
         )
 
+    def _apply_router_settings(self) -> None:
+        """Push persisted router settings (cooldown, safety margin) into the core router."""
+        if not hasattr(self.router, "apply_settings"):
+            return
+        settings = get_app_settings()
+        self.router.apply_settings(
+            cooldown_seconds=float(settings.value("router/cooldown_sec", 60)),
+            safety_margin_tokens=int(settings.value("router/safety_margin", 500)),
+        )
+
     def _on_settings_updated(self) -> None:
+        self._apply_router_settings()
         self._populate_model_combo()
         self._on_skills_changed()
         self.skills_view.refresh_skills()

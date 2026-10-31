@@ -157,7 +157,7 @@ def test_provider_errors_classification() -> None:
 
     bad_req = BadRequestError("Bad parameter", provider_id="ollama")
     assert bad_req.category == "bad_request"
-    assert bad_req.should_skip_model_siblings
+    assert not bad_req.should_skip_model_siblings  # another provider may accept it
 
     net_err = NetworkError("Connection timed out", provider_id="together")
     assert net_err.category == "network"
