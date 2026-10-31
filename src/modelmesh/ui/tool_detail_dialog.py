@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Optional
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QThread, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -25,6 +25,21 @@ from modelmesh.core.tools.registry import ToolRegistry
 from modelmesh.core.types import ToolSpec
 
 
+class ToolTestWorker(QThread):
+    """Runs one tool invocation off the UI thread (tools may do network or disk I/O)."""
+
+    finished_result = pyqtSignal(object)  # ToolExecutionResult
+
+    def __init__(self, tool_registry: ToolRegistry, name: str, args: Dict[str, Any], parent: Optional[Any] = None) -> None:
+        super().__init__(parent)
+        self.tool_registry = tool_registry
+        self.name = name
+        self.args = args
+
+    def run(self) -> None:
+        self.finished_result.emit(self.tool_registry.execute(self.name, self.args))
+
+
 class ToolDetailDialog(QDialog):
     """Dialog showing detailed schema, documentation, and live test runner for a tool."""
 
@@ -39,6 +54,7 @@ class ToolDetailDialog(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.tool_spec = tool_spec
         self.tool_registry = tool_registry
+        self._test_worker: Optional[ToolTestWorker] = None
         self.setWindowTitle(f"Tool: {tool_spec.name}")
         self.resize(680, 520)
         self._init_ui()
@@ -173,11 +189,15 @@ class ToolDetailDialog(QDialog):
                 self.output_edit.setPlainText(f"JSON Parsing Error in Arguments: {exc}")
                 return
 
+        if self._test_worker is not None and self._test_worker.isRunning():
+            return
         self.run_btn.setEnabled(False)
         self.output_edit.setPlainText("Executing...")
+        self._test_worker = ToolTestWorker(self.tool_registry, self.tool_spec.name, args, parent=self)
+        self._test_worker.finished_result.connect(self._on_test_result)
+        self._test_worker.start()
 
-        result = self.tool_registry.execute(self.tool_spec.name, args)
-
+    def _on_test_result(self, result: Any) -> None:
         self.run_btn.setEnabled(True)
         self.exec_time_lbl.setText(f"Latency: {result.duration_ms} ms | Success: {result.success}")
 
@@ -188,3 +208,9 @@ class ToolDetailDialog(QDialog):
                 self.output_edit.setPlainText(str(result.output))
         else:
             self.output_edit.setPlainText(f"Execution Error:\n{result.error}")
+
+    def done(self, code: int) -> None:
+        """Wait for a running test before the dialog closes, so its thread is never orphaned."""
+        if self._test_worker is not None and self._test_worker.isRunning():
+            self._test_worker.wait(10000)
+        super().done(code)

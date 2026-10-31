@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Tuple
 
 ErrorCategory = Literal[
     "auth",
@@ -39,7 +40,42 @@ def sanitize_error_message(text: str) -> str:
     sanitized = text
     for pat in _KEY_PATTERNS:
         sanitized = pat.sub("[REDACTED_KEY]", sanitized)
+    # Keys without a recognisable prefix (e.g. Cloudflare tokens): redact any
+    # secret-looking environment value that appears verbatim.
+    for name, value in os.environ.items():
+        if value and len(value) >= 8 and _SECRET_ENV_NAME.search(name) and value in sanitized:
+            sanitized = sanitized.replace(value, "[REDACTED_KEY]")
     return sanitized
+
+
+_SECRET_ENV_NAME = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD)$", re.IGNORECASE)
+
+_FRIENDLY_MESSAGES = {
+    "auth": "The provider rejected the API key. Check it in Settings → Providers.",
+    "rate_limit": "The provider is rate-limiting requests. Wait a moment, or pick another model.",
+    "context_length": "This conversation is too long for the model. Start a new chat or pick a model with a larger context window.",
+    "bad_request": "The provider rejected the request (it may not support a setting or attachment used here).",
+    "network": "Couldn't reach the provider. Check your internet connection.",
+    "server": "The provider had a server error. Try again, or pick another model.",
+    "routing": "No configured model can take this request right now.",
+    "unknown": "Something went wrong while generating the reply.",
+}
+
+
+def friendly_error(exc_or_text: Any, category: Optional[str] = None) -> Tuple[str, str, str]:
+    """Turn an exception (or raw text) into (friendly message, scrubbed details, category).
+
+    UIs show the friendly message and keep the details behind a toggle (Rule 11).
+    """
+    if category is None:
+        if isinstance(exc_or_text, ProviderError):
+            category = exc_or_text.category
+        elif isinstance(exc_or_text, RoutingError):
+            category = "routing"
+        else:
+            category = "unknown"
+    details = sanitize_error_message(str(exc_or_text))
+    return _FRIENDLY_MESSAGES.get(category, _FRIENDLY_MESSAGES["unknown"]), details, category
 
 
 class ModelMeshError(Exception):

@@ -24,7 +24,7 @@ from PyQt6.QtWidgets import (
 
 from modelmesh.core.keys import get_env_key, set_env_key
 from modelmesh.core.providers.base import get_adapter
-from modelmesh.core.errors import RegistryError
+from modelmesh.core.errors import RegistryError, friendly_error
 from modelmesh.core.registry import ModelRegistry
 from modelmesh.core.types import ProviderConfig
 
@@ -91,7 +91,8 @@ class ProviderTestWorker(QThread):
             adapter.test_connection(self.provider)
             self.finished_success.emit(self.provider.id)
         except Exception as exc:
-            self.finished_error.emit(str(exc))
+            message, details, _ = friendly_error(exc)
+            self.finished_error.emit(f"{message}\n\nDetails: {details}")
 
 
 class ProviderListModelsWorker(QThread):
@@ -110,7 +111,8 @@ class ProviderListModelsWorker(QThread):
             models = adapter.list_models(self.provider)
             self.finished_success.emit(self.provider.id, models)
         except Exception as exc:
-            self.finished_error.emit(self.provider.id, str(exc))
+            message, details, _ = friendly_error(exc)
+            self.finished_error.emit(self.provider.id, f"{message}\n\nDetails: {details}")
 
 
 class AddProviderDialog(QDialog):

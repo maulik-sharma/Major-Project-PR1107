@@ -279,18 +279,25 @@ function renderFinishedFooter(msgId, meta) {
 /**
  * Display an error banner (message text is shown as plain text).
  */
-function set_error(msgId, errorMsg, category = 'unknown') {
+function set_error(msgId, errorMsg, category = 'unknown', details = '') {
   const row = messageRow(msgId) || document.getElementById('chat-container');
   if (!row) return;
   const banner = document.createElement('div');
   banner.className = 'error-banner';
-  const title = document.createElement('div');
-  title.style.fontWeight = '600';
-  title.style.marginBottom = '2px';
-  title.textContent = `Error (${category})`;
   const body = document.createElement('div');
+  body.style.fontWeight = '600';
   body.textContent = errorMsg;
-  banner.append(title, body);
+  banner.appendChild(body);
+  if (details && details !== errorMsg) {
+    const more = document.createElement('details');
+    more.className = 'error-details';
+    const summary = document.createElement('summary');
+    summary.textContent = `Details (${category})`;
+    const pre = document.createElement('pre');
+    pre.textContent = details;
+    more.append(summary, pre);
+    banner.appendChild(more);
+  }
   row.appendChild(banner);
   scrollToBottom(true);
 }

@@ -814,3 +814,22 @@ body.light-theme .tool-error-label,
 body.light-theme .tool-error-text {
   color: #b91c1c;
 }
+
+.error-details {
+  margin-top: 4px;
+  font-size: 11.5px;
+}
+
+.error-details summary {
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.error-details pre {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: transparent;
+  border: none;
+  padding: 0;
+}

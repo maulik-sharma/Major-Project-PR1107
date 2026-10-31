@@ -241,10 +241,11 @@ class ChatView(QWebEngineView):
         msg_id: str,
         error_msg: str,
         category: str = "unknown",
+        details: str = "",
     ) -> None:
-        """Display an error notification."""
+        """Display a friendly error, with optional (already scrubbed) technical details."""
         self._flush_stream_buffers()
-        self._run_js("set_error", msg_id, error_msg, category)
+        self._run_js("set_error", msg_id, error_msg, category, details)
 
     def clear(self) -> None:
         """Clear all messages and show empty state."""

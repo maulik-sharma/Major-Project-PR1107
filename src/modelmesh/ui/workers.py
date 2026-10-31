@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from modelmesh.core.engine import ChatEngine
+from modelmesh.core.errors import friendly_error
 from modelmesh.core.types import (
     Candidate,
     ChatRequest,
@@ -147,16 +148,14 @@ class ChatWorker(QThread):
                     })
 
                 elif event.type == StreamEventType.ERROR:
-                    self.error_occurred.emit({
-                        "error": event.data.get("error", "Unknown error"),
-                        "category": event.data.get("category", "unknown"),
-                    })
+                    message, details, category = friendly_error(
+                        event.data.get("error", "Unknown error"), event.data.get("category", "unknown")
+                    )
+                    self.error_occurred.emit({"error": message, "details": details, "category": category})
 
-        except Exception as exc:
-            self.error_occurred.emit({
-                "error": str(exc),
-                "category": "unknown",
-            })
+        except Exception as exc:  # e.g. RoutingError raised before streaming starts
+            message, details, category = friendly_error(exc)
+            self.error_occurred.emit({"error": message, "details": details, "category": category})
 
 
 class ScoresRefreshWorker(QThread):
@@ -198,7 +197,8 @@ class ScoresRefreshWorker(QThread):
                 "fetched_at": snapshot.fetched_at,
             })
         except Exception as exc:
-            self.error_occurred.emit(str(exc))
+            message, details, _ = friendly_error(exc)
+            self.error_occurred.emit(f"{message}\n\nDetails: {details}")
 
 
 class DecisionTestWorker(QThread):
@@ -252,7 +252,8 @@ class DecisionTestWorker(QThread):
                 },
             })
         except Exception as exc:
-            self.error_occurred.emit(str(exc))
+            message, details, _ = friendly_error(exc)
+            self.error_occurred.emit(f"{message}\n\nDetails: {details}")
 
 
 

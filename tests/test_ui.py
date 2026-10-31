@@ -643,6 +643,9 @@ def test_tool_detail_dialog_and_live_test(qapp, tmp_path: Path) -> None:
     # Execute test in dialog
     dlg.args_edit.setPlainText('{"expression": "100 / 4 + 7"}')
     dlg._on_run_test()
+    assert dlg._test_worker is not None
+    dlg._test_worker.wait(5000)  # runs on a worker thread now, not the UI thread
+    qapp.processEvents()
 
     assert "32" in dlg.output_edit.toPlainText()
     assert "Latency:" in dlg.exec_time_lbl.text()
@@ -885,3 +888,15 @@ def test_models_tab_toggle_persists_to_providers_yaml(qapp, tmp_path: Path) -> N
     reloaded = ModelRegistry()
     reloaded.load_from_file(reg.source_path)
     assert reloaded.get_model("mock-fast").endpoints[0].enabled is False
+
+
+
+def test_friendly_errors_scrub_secrets(monkeypatch) -> None:
+    from modelmesh.core.errors import ProviderError, RoutingError, friendly_error
+
+    monkeypatch.setenv("SOME_PROVIDER_TOKEN", "tok_abcdef123456")
+    msg, details, cat = friendly_error(ProviderError("401 for token tok_abcdef123456", category="auth"))
+    assert cat == "auth" and "API key" in msg
+    assert "tok_abcdef123456" not in details
+    assert friendly_error(RoutingError("no eligible"))[2] == "routing"
+    assert "Traceback" not in friendly_error(ValueError("boom"))[0]

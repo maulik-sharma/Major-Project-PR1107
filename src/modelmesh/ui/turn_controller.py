@@ -242,7 +242,9 @@ class TurnController(QObject):
         if self._live(turn):
             self._ensure_bubble(turn)
             self.chat_view.finish_assistant_message(turn.msg_id, self._partial_meta(turn))
-            self.chat_view.show_error(turn.msg_id, data.get("error", "Unknown error"), data.get("category", "unknown"))
+            self.chat_view.show_error(
+                turn.msg_id, data.get("error", "Unknown error"), data.get("category", "unknown"), data.get("details", "")
+            )
             self.status.emit("Error during generation.")
 
     def _on_thread_finished(self, turn: _Turn) -> None:
