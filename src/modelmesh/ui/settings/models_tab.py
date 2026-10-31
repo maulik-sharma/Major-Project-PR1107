@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from modelmesh.core.errors import RegistryError
 from modelmesh.core.registry import ModelRegistry
 from modelmesh.core.types import EndpointConfig, ModelConfig
 
@@ -348,11 +349,20 @@ class ModelsTab(QWidget):
         )
         if dlg.exec() == QDialog.DialogCode.Accepted:
             data = dlg.get_result()
-            if data.get("new_model"):
-                self.registry.add_model(data["new_model"])
+            new_model = data.get("new_model")
+            if new_model is not None and self.registry.get_model(new_model.id) is not None:
+                QMessageBox.warning(
+                    self, "Model Exists",
+                    f"A model with id '{new_model.id}' already exists. Pick it from the model list instead.",
+                )
+                return
+            if any(ep.id == data["endpoint"].id for m in self.registry.models() for ep in m.endpoints):
+                QMessageBox.warning(self, "Endpoint Exists", f"Endpoint '{data['endpoint'].id}' already exists.")
+                return
+            if new_model is not None:
+                self.registry.add_model(new_model)
             self.registry.add_endpoint(data["model_id"], data["endpoint"])
-            self.refresh()
-            self.config_changed.emit()
+            self._commit()
 
     def _on_edit_endpoint(self) -> None:
         data = self._get_selected_data()
@@ -370,8 +380,7 @@ class ModelsTab(QWidget):
         dlg = EditEndpointDialog(endpoint=endpoint, parent=self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             dlg.update_endpoint()
-            self.refresh()
-            self.config_changed.emit()
+            self._commit()
 
     def _on_toggle_active(self) -> None:
         data = self._get_selected_data()
@@ -385,8 +394,7 @@ class ModelsTab(QWidget):
             return
 
         endpoint.enabled = not endpoint.enabled
-        self.refresh()
-        self.config_changed.emit()
+        self._commit()
 
     def _on_delete_selected(self) -> None:
         data = self._get_selected_data()
@@ -400,7 +408,28 @@ class ModelsTab(QWidget):
             f"Delete endpoint '{data['ep_id']}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
-        if reply == QMessageBox.StandardButton.Yes:
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
             self.registry.remove_endpoint(data["model_id"], data["ep_id"])
-            self.refresh()
-            self.config_changed.emit()
+        except RegistryError:
+            again = QMessageBox.question(
+                self,
+                "Delete Model",
+                f"'{data['ep_id']}' is the only endpoint of model '{data['model_id']}'. "
+                "Delete the whole model?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if again != QMessageBox.StandardButton.Yes:
+                return
+            self.registry.remove_model(data["model_id"])
+        self._commit()
+
+    def _commit(self) -> None:
+        """Validate and save providers.yaml, then refresh the view and notify listeners."""
+        try:
+            self.registry.save()
+        except (RegistryError, OSError) as exc:
+            QMessageBox.warning(self, "Not Saved", f"The change could not be saved: {exc}")
+        self.refresh()
+        self.config_changed.emit()

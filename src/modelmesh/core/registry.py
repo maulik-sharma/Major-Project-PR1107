@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 import yaml
@@ -21,6 +22,8 @@ class ModelRegistry:
     def __init__(self) -> None:
         self._providers: Dict[str, ProviderConfig] = {}
         self._models: Dict[str, ModelConfig] = {}
+        # Where save() writes; set by load_default_registry (always providers.yaml, never the example).
+        self.source_path: Optional[Path] = None
 
     def clear(self) -> None:
         """Clear all loaded providers and models."""
@@ -31,8 +34,22 @@ class ModelRegistry:
         """Register or update a provider."""
         self._providers[provider.id] = provider
 
+    def endpoints_using_provider(self, provider_id: str) -> List[str]:
+        """Return ids of endpoints that reference a provider."""
+        return [ep.id for m in self._models.values() for ep in m.endpoints if ep.provider == provider_id]
+
     def remove_provider(self, provider_id: str) -> None:
-        """Remove a provider by ID."""
+        """Remove a provider by ID.
+
+        Raises:
+            RegistryError: If endpoints still use it (removing it would break routing).
+        """
+        in_use = self.endpoints_using_provider(provider_id)
+        if in_use:
+            raise RegistryError(
+                f"Provider '{provider_id}' is still used by endpoints: {', '.join(in_use)}. "
+                "Delete or move those endpoints first."
+            )
         self._providers.pop(provider_id, None)
 
     def get_provider(self, provider_id: str) -> Optional[ProviderConfig]:
@@ -79,11 +96,18 @@ class ModelRegistry:
             model.endpoints.append(endpoint)
 
     def remove_endpoint(self, model_id: str, endpoint_id: str) -> None:
-        """Remove an endpoint from a model."""
+        """Remove an endpoint from a model.
+
+        Raises:
+            RegistryError: If it is the model's last endpoint (remove the model instead).
+        """
         model = self.get_model(model_id)
         if not model:
             return
-        model.endpoints = [ep for ep in model.endpoints if ep.id != endpoint_id]
+        remaining = [ep for ep in model.endpoints if ep.id != endpoint_id]
+        if not remaining:
+            raise RegistryError(f"'{endpoint_id}' is the last endpoint of model '{model_id}'.")
+        model.endpoints = remaining
 
     def validate(self) -> None:
         """Validate the consistency and integrity of all providers and models.
@@ -205,15 +229,24 @@ class ModelRegistry:
         self.load_from_yaml(content)
 
     def save_to_file(self, path: Path | str) -> None:
-        """Serialize and save registry configuration to a YAML file."""
+        """Validate, then atomically save the registry configuration to a YAML file."""
+        self.validate()
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
         data = {
-            "providers": [p.to_dict() for p in self.providers()],
+            "providers": [prov.to_dict() for prov in self.providers()],
             "models": [m.to_dict() for m in self.models()],
         }
-        yaml_content = yaml.safe_dump(data, sort_keys=False, indent=2)
-        p.write_text(yaml_content, encoding="utf-8")
+        tmp = p.with_name(p.name + ".tmp")
+        tmp.write_text(yaml.safe_dump(data, sort_keys=False, indent=2), encoding="utf-8")
+        os.replace(tmp, p)
+
+    def save(self) -> bool:
+        """Persist to ``source_path``. Returns False for in-memory registries (no file)."""
+        if self.source_path is None:
+            return False
+        self.save_to_file(self.source_path)
+        return True
 
 
 def get_default_config_dir() -> Path:
@@ -238,6 +271,7 @@ def load_default_registry(config_dir: Optional[Path | str] = None) -> ModelRegis
     example = base / "providers.example.yaml"
 
     reg = ModelRegistry()
+    reg.source_path = target
     if target.exists():
         reg.load_from_file(target)
     elif example.exists():

@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 
 from modelmesh.core.keys import get_env_key, set_env_key
 from modelmesh.core.providers.base import get_adapter
+from modelmesh.core.errors import RegistryError
 from modelmesh.core.registry import ModelRegistry
 from modelmesh.core.types import ProviderConfig
 
@@ -248,17 +249,21 @@ class ProvidersTab(QWidget):
         layout.addWidget(splitter)
         self.refresh()
 
-    def refresh(self) -> None:
-        """Reload providers list from registry."""
+    def refresh(self, select_id: Optional[str] = None) -> None:
+        """Reload providers list from registry, keeping (or setting) the selected provider."""
+        current = self.provider_list.currentItem()
+        keep_id = select_id or (current.data(Qt.ItemDataRole.UserRole) if current else None)
         self.provider_list.clear()
         providers = self.registry.providers()
-        for p in providers:
+        row = 0
+        for i, p in enumerate(providers):
             item = QListWidgetItem(f"{p.id} ({p.protocol})")
             item.setData(Qt.ItemDataRole.UserRole, p.id)
             self.provider_list.addItem(item)
-
+            if p.id == keep_id:
+                row = i
         if providers:
-            self.provider_list.setCurrentRow(0)
+            self.provider_list.setCurrentRow(row)
 
     def _on_provider_selected(self, current: Optional[QListWidgetItem], _: Any) -> None:
         if not current:
@@ -398,9 +403,11 @@ class ProvidersTab(QWidget):
         dlg = AddProviderDialog(self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             prov = dlg.get_provider_config()
+            if self.registry.get_provider(prov.id) is not None:
+                QMessageBox.warning(self, "Provider Exists", f"A provider with id '{prov.id}' already exists.")
+                return
             self.registry.add_provider(prov)
-            self.refresh()
-            self.config_changed.emit()
+            self._commit(select_id=prov.id)
 
     def _on_delete_provider(self) -> None:
         curr = self.provider_list.currentItem()
@@ -413,7 +420,20 @@ class ProvidersTab(QWidget):
             f"Are you sure you want to remove provider '{prov_id}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
-        if reply == QMessageBox.StandardButton.Yes:
-            self.registry._providers.pop(prov_id, None)
-            self.refresh()
-            self.config_changed.emit()
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self.registry.remove_provider(prov_id)
+        except RegistryError as exc:
+            QMessageBox.warning(self, "Provider In Use", str(exc))
+            return
+        self._commit()
+
+    def _commit(self, select_id: Optional[str] = None) -> None:
+        """Validate and save providers.yaml, then refresh and notify listeners."""
+        try:
+            self.registry.save()
+        except (RegistryError, OSError) as exc:
+            QMessageBox.warning(self, "Not Saved", f"The change could not be saved: {exc}")
+        self.refresh(select_id=select_id)
+        self.config_changed.emit()

@@ -127,3 +127,53 @@ def test_active_providers_config() -> None:
         assert cand.price_in_per_mtok >= 0.0
         assert cand.price_out_per_mtok >= 0.0
 
+
+
+def _small_registry() -> ModelRegistry:
+    from modelmesh.core.types import EndpointConfig, ModelConfig, ProviderConfig
+
+    reg = ModelRegistry()
+    reg.add_provider(ProviderConfig(id="p1", protocol="mock"))
+    reg.add_provider(ProviderConfig(id="p2", protocol="mock"))
+    reg.add_model(ModelConfig(id="m", display_name="M", endpoints=[
+        EndpointConfig(id="m@p1", provider="p1", api_model="a"),
+        EndpointConfig(id="m@p2", provider="p2", api_model="a"),
+    ]))
+    return reg
+
+
+def test_cannot_remove_provider_still_in_use() -> None:
+    reg = _small_registry()
+    with pytest.raises(RegistryError, match="still used"):
+        reg.remove_provider("p1")
+    reg.remove_endpoint("m", "m@p1")
+    reg.remove_provider("p1")
+    assert reg.get_provider("p1") is None
+    assert reg.candidates()  # registry still valid
+
+
+def test_cannot_remove_last_endpoint() -> None:
+    reg = _small_registry()
+    reg.remove_endpoint("m", "m@p1")
+    with pytest.raises(RegistryError, match="last endpoint"):
+        reg.remove_endpoint("m", "m@p2")
+
+
+def test_save_round_trips_and_in_memory_save_is_noop(tmp_path: Path) -> None:
+    reg = _small_registry()
+    assert reg.save() is False
+    reg.source_path = tmp_path / "providers.yaml"
+    reg.get_model("m").endpoints[0].enabled = False
+    assert reg.save() is True
+    loaded = ModelRegistry()
+    loaded.load_from_file(reg.source_path)
+    assert loaded.get_model("m").endpoints[0].enabled is False
+    assert not (tmp_path / "providers.yaml.tmp").exists()
+
+
+def test_default_registry_saves_to_providers_yaml_not_example(tmp_path: Path) -> None:
+    import shutil
+
+    shutil.copyfile("config/providers.example.yaml", tmp_path / "providers.example.yaml")
+    reg = load_default_registry(tmp_path)
+    assert reg.source_path == tmp_path / "providers.yaml"

@@ -871,3 +871,17 @@ def test_routing_tab_and_decision_worker(qapp, tmp_path: Path) -> None:
 
 
 
+
+
+def test_models_tab_toggle_persists_to_providers_yaml(qapp, tmp_path: Path) -> None:
+    from modelmesh.ui.settings.models_tab import ModelsTab
+
+    reg = create_test_registry()
+    reg.source_path = tmp_path / "providers.yaml"
+    tab = ModelsTab(registry=reg)
+    tab._get_selected_data = lambda: {"model_id": "mock-fast", "ep_id": "mock-fast@mock"}  # type: ignore[method-assign]
+    tab._on_toggle_active()
+
+    reloaded = ModelRegistry()
+    reloaded.load_from_file(reg.source_path)
+    assert reloaded.get_model("mock-fast").endpoints[0].enabled is False

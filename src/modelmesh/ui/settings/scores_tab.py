@@ -24,7 +24,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from modelmesh.core.registry import ModelRegistry, get_default_config_dir
+from modelmesh.core.registry import ModelRegistry
 from modelmesh.core.scores.matcher import suggest_model_slugs
 from modelmesh.core.scores.snapshots import (
     EffectiveScores,
@@ -312,7 +312,7 @@ class ScoresTab(QWidget):
             model.scores.aa_slug = slug
             model.scores.manual = manual
 
-            self.registry.save_to_file(get_default_config_dir() / "providers.yaml")
+            self.registry.save()
             self.refresh()
             self.config_changed.emit()
 
@@ -368,7 +368,7 @@ class ScoresTab(QWidget):
                         updated += 1
 
         if updated > 0:
-            self.registry.save_to_file(get_default_config_dir() / "providers.yaml")
+            self.registry.save()
             self.refresh()
             self.config_changed.emit()
             QMessageBox.information(
