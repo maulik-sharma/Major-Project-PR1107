@@ -2,35 +2,58 @@
 # Example configuration showing multi-provider routing and endpoints
 
 providers:
+  # catalog: how Settings → Endpoints → Check Provider Models reads each provider's
+  # live model list (format, url, free_only / assume_free, include / exclude globs).
   - id: groq
     protocol: openai_compat
     base_url: https://api.groq.com/openai/v1
     auth_env:
       - GROQ_API_KEY
+    catalog:
+      format: openai
+      assume_free: true    # free plan: every model costs $0 (rate limits still apply)
+      exclude: ["whisper*", "*prompt-guard*", "*safeguard*", "canopylabs/*"]
 
   - id: openrouter
     protocol: openai_compat
     base_url: https://openrouter.ai/api/v1
     auth_env:
       - OPENROUTER_API_KEY
+    catalog:
+      format: openai
+      free_only: true      # offer only models priced $0 (the ":free" variants)
+      exclude: ["openrouter/*", "*content-safety*"]
 
   - id: gemini
     protocol: openai_compat
     base_url: https://generativelanguage.googleapis.com/v1beta/openai/
     auth_env:
       - GEMINI_API_KEY
+    catalog:
+      format: gemini
+      url: https://generativelanguage.googleapis.com/v1beta/models
+      include: ["gemini-*", "gemma-*"]
+      exclude: ["*tts*", "*image*", "*embedding*", "*live*", "*audio*", "*transcribe*", "*robotics*",
+                "*computer-use*", "*customtools*", "*-latest", "*nano-banana*", "*omni*"]
 
   - id: openai
     protocol: openai_compat
     base_url: https://api.openai.com/v1
     auth_env:
       - OPENAI_API_KEY
+    catalog:
+      format: openai
+      include: ["gpt-*", "o[0-9]*"]
+      exclude: ["gpt-3.5*", "gpt-4*", "*-20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]", "*audio*", "*realtime*",
+                "*search*", "*transcribe*", "*tts*", "*image*", "gpt-live*", "*instruct*"]
 
   - id: anthropic
     protocol: anthropic
     base_url: https://api.anthropic.com
     auth_env:
       - ANTHROPIC_API_KEY
+    catalog:
+      format: anthropic
 
   - id: ollama
     protocol: openai_compat
