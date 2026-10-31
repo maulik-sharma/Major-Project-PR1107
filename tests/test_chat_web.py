@@ -101,3 +101,13 @@ def test_streaming_closes_tilde_and_long_fences(view: ChatView) -> None:
     view.append_token("s1", "Here:\n~~~python\nx = 1\n")
     _wait(300)
     assert _eval(view, "document.getElementById('content-s1').querySelectorAll('pre').length") == 1
+
+
+def test_code_is_highlighted_once_reply_finishes(view: ChatView) -> None:
+    view.start_assistant_message("h1", "m", "p", "manual", "")
+    view.append_token("h1", "```python\ndef f():\n    return 1\n```\n")
+    _wait(300)
+    assert _eval(view, "document.querySelectorAll('#content-h1 code[data-highlighted]').length") == 0
+    view.finish_assistant_message("h1", {"model_id": "m"})
+    _wait(300)
+    assert _eval(view, "document.querySelectorAll('#content-h1 code[data-highlighted]').length") == 1

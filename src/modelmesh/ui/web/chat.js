@@ -136,12 +136,13 @@ function renderMarkdown(rawText, isStreaming = false) {
   }
 }
 
-function attachCodeCopyButtons(container) {
+function attachCodeCopyButtons(container, highlight = true) {
   if (!container) return;
   const preElements = container.querySelectorAll('pre');
   preElements.forEach((pre) => {
     const codeEl = pre.querySelector('code');
-    if (codeEl && typeof hljs !== 'undefined' && !codeEl.dataset.highlighted) {
+    // Highlighting is the costly step: do it once the reply is complete, not on every chunk.
+    if (highlight && codeEl && typeof hljs !== 'undefined' && !codeEl.dataset.highlighted) {
       try {
         hljs.highlightElement(codeEl);
         codeEl.dataset.highlighted = 'yes';
@@ -289,8 +290,11 @@ function updateMessageDisplay(msgId) {
         }
       }
 
-      thinkingContent.innerHTML = renderMarkdown(reasoning, buf.isStreaming);
-      attachCodeCopyButtons(thinkingContent);
+      if (buf.renderedReasoning !== reasoning) {
+        buf.renderedReasoning = reasoning;
+        thinkingContent.innerHTML = renderMarkdown(reasoning, buf.isStreaming);
+      }
+      attachCodeCopyButtons(thinkingContent, !buf.isStreaming);
     } else {
       thinkingBox.style.display = 'none';
     }
@@ -298,7 +302,9 @@ function updateMessageDisplay(msgId) {
 
   // Update Main Assistant Content
   const contentEl = document.getElementById(`content-${msgId}`);
-  if (contentEl) {
+  const contentKey = `${buf.isStreaming}|${content}|${reasoning ? 1 : 0}`;
+  if (contentEl && buf.renderedContentKey !== contentKey) {
+    buf.renderedContentKey = contentKey;
     if (content || !buf.isStreaming) {
       contentEl.innerHTML = renderMarkdown(content, buf.isStreaming) + (buf.isStreaming ? '<span class="streaming-cursor"></span>' : '');
     } else if (buf.isStreaming && reasoning && reasoning.trim()) {
@@ -306,8 +312,35 @@ function updateMessageDisplay(msgId) {
     } else {
       contentEl.innerHTML = '<span class="streaming-cursor"></span>';
     }
-    attachCodeCopyButtons(contentEl);
+    attachCodeCopyButtons(contentEl, !buf.isStreaming);
   }
+}
+
+/**
+ * Coalesce re-renders while streaming: render at once if the last render was
+ * over 50 ms ago, otherwise schedule one trailing render. (Timers alone are
+ * throttled by Chromium while the window is hidden.)
+ */
+const RENDER_INTERVAL_MS = 50;
+
+function scheduleRender(msgId) {
+  const buf = messageBuffers[msgId];
+  if (!buf) return;
+  const now = Date.now();
+  if (now - (buf.lastRenderAt || 0) >= RENDER_INTERVAL_MS) {
+    buf.lastRenderAt = now;
+    updateMessageDisplay(msgId);
+    scrollToBottom(false);
+    return;
+  }
+  if (buf.renderPending) return;
+  buf.renderPending = true;
+  setTimeout(() => {
+    buf.renderPending = false;
+    buf.lastRenderAt = Date.now();
+    updateMessageDisplay(msgId);
+    scrollToBottom(false);
+  }, RENDER_INTERVAL_MS);
 }
 
 /**
@@ -414,8 +447,7 @@ function append_text_chunk(msgId, chunk) {
   if (!buf) return;
 
   buf.text += chunk;
-  updateMessageDisplay(msgId);
-  scrollToBottom(false);
+  scheduleRender(msgId);
 }
 
 /**
@@ -426,8 +458,7 @@ function append_reasoning_chunk(msgId, chunk) {
   if (!buf) return;
 
   buf.reasoning += chunk;
-  updateMessageDisplay(msgId);
-  scrollToBottom(false);
+  scheduleRender(msgId);
 }
 
 /**
