@@ -21,7 +21,8 @@ from modelmesh.core.scores.aa_client import (
     ATTRIBUTION_TEXT,
     ArtificialAnalysisClient,
 )
-from modelmesh.core.scores.matcher import suggest_model_slugs
+from modelmesh.core.scores.arena_client import ARENA_ATTRIBUTION_TEXT, ARENA_SOURCE, LMArenaClient
+from modelmesh.core.scores.matcher import arena_votes, match_identifiers, strict_match
 from modelmesh.core.scores.snapshots import (
     ScoreSnapshot,
     ScoreStore,
@@ -35,6 +36,18 @@ def handle_scores_command(args: argparse.Namespace, storage: Storage) -> int:
     """Handle CLI subcommands for intelligence scores."""
     store = ScoreStore(storage)
     registry = load_default_registry()
+
+    if args.scores_action == "refresh" and getattr(args, "source", "aa") == "arena":
+        print("Downloading the LMArena text leaderboard...")
+        try:
+            snap = LMArenaClient().fetch_snapshot()
+            store.save_snapshot(snap)
+            print(f"Success! Saved {len(snap.models_by_slug)} models (published {snap.index_version}).")
+            print(f"\n{ARENA_ATTRIBUTION_TEXT}")
+            return 0
+        except Exception as exc:
+            print(f"Error refreshing LMArena ratings: {exc}", file=sys.stderr)
+            return 1
 
     if args.scores_action == "refresh":
         print("Fetching latest models from Artificial Analysis API...")
@@ -56,48 +69,50 @@ def handle_scores_command(args: argparse.Namespace, storage: Storage) -> int:
             print(f"Error refreshing scores: {exc}", file=sys.stderr)
             return 1
 
-    elif args.scores_action == "show":
-        snapshot, note = store.get_active_snapshot(registry.models())
-        print(f"\n=== ModelMesh Model Intelligence Scores ===")
+    snapshot, note = store.get_active_snapshot(registry.models())
+    arena = store.get_latest_snapshot(source=ARENA_SOURCE)
+
+    if args.scores_action == "show":
+        print(f"\n=== ModelMesh Model Scores ===")
         if snapshot:
-            print(f"Active Snapshot: {snapshot.id} (Fetched: {snapshot.fetched_at}, Index v{snapshot.index_version})")
+            print(f"AA snapshot: {snapshot.id} (Fetched: {snapshot.fetched_at}, Index v{snapshot.index_version})")
             if note:
                 print(f"Note: {note}")
         else:
-            print("Notice: No snapshot found in database. Run 'modelmesh scores refresh' to fetch from AA.")
+            print("Notice: No AA snapshot. Run 'modelmesh-cli scores refresh'.")
+        print(f"Arena snapshot: published {arena.index_version}" if arena
+              else "Notice: No LMArena snapshot. Run 'modelmesh-cli scores refresh --source arena'.")
 
-        print(f"{'Model ID':<22} | {'Linked AA Slug':<30} | {'Intel':<7} | {'Code':<7} | {'Agent':<7} | {'Status'}")
-        print("-" * 93)
+        def fmt(v: Optional[float], d: int = 1) -> str:
+            return f"{v:.{d}f}" if v is not None else "-"
+
+        print(f"{'Model ID':<22} | {'Intel':<6} | {'Code':<6} | {'Agent':<6} | {'Arena':<6} | {'ArCode':<6} | {'Status'}")
+        print("-" * 78)
         for m in registry.models():
-            eff = resolve_effective_scores(m, snapshot)
-            intel_s = f"{eff.intelligence:.1f}" if eff.intelligence is not None else "-"
-            code_s = f"{eff.coding:.1f}" if eff.coding is not None else "-"
-            agent_s = f"{eff.agentic:.1f}" if eff.agentic is not None else "-"
-            slug_s = (m.scores.aa_slug or "-")[:28]
-            status = eff.source
-            print(f"{m.id:<22} | {slug_s:<30} | {intel_s:<7} | {code_s:<7} | {agent_s:<7} | {status}")
-
-        print(f"\n{ATTRIBUTION_TEXT}")
-        print("Legend: - = not benchmarked. Smart ranks a pool on intelligence when any model lacks the task's sub-index.\n")
+            eff = resolve_effective_scores(m, snapshot, arena)
+            print(
+                f"{m.id:<22} | {fmt(eff.intelligence):<6} | {fmt(eff.coding):<6} | {fmt(eff.agentic):<6} | "
+                f"{fmt(eff.arena.get('overall'), 0):<6} | {fmt(eff.arena.get('coding'), 0):<6} | {eff.source}"
+            )
+        print(f"\n{ATTRIBUTION_TEXT} · {ARENA_ATTRIBUTION_TEXT}")
+        print("Legend: - = not benchmarked. Smart ranks each task on the first metric that covers enough models.\n")
         return 0
 
     elif args.scores_action == "auto-match":
-        snapshot = store.get_latest_snapshot()
-        if not snapshot:
+        aa_records = list(snapshot.models_by_slug.values()) if snapshot else []
+        arena_records = list(arena.models_by_slug.values()) if arena else []
+        if not aa_records and not arena_records:
             print("Error: No score snapshot found. Run 'scores refresh' first.", file=sys.stderr)
             return 1
-        raw_models = snapshot.raw_payload.get("models", [])
-        print("\n=== Proposed Slug Matches for Unlinked Models ===")
+        print("\n=== Exact Matches for Models (current link -> exact match) ===")
         for m in registry.models():
-            if not m.scores.aa_slug:
-                suggestions = suggest_model_slugs(m.id, raw_models, limit=3)
-                print(f"\nModel: {m.id} ({m.display_name})")
-                if suggestions:
-                    for s in suggestions:
-                        print(f"  -> {s['slug']:<32} | Intel: {s.get('intelligence')} | Similarity: {s['similarity']}")
-                else:
-                    print("  -> No close matches found.")
-        print(f"\n{ATTRIBUTION_TEXT}\n")
+            ids = match_identifiers(m)
+            aa_hit = strict_match(ids, aa_records) if aa_records else None
+            arena_hit = strict_match(ids, arena_records, arena_votes) if arena_records else None
+            print(f"{m.id:<22} AA: {m.scores.aa_slug or '-'} -> {aa_hit or 'no exact match'}"
+                  f" | Arena: {m.scores.arena_name or '-'} -> {arena_hit or 'no exact match'}")
+        print("\nEdit providers.yaml (scores.aa_slug / scores.arena_name) or use Settings > Scores to apply.")
+        print(f"\n{ATTRIBUTION_TEXT} · {ARENA_ATTRIBUTION_TEXT}\n")
         return 0
 
     return 0
@@ -112,6 +127,7 @@ def main() -> int:
         )
         scores_parser.add_argument("subcommand", choices=["scores"])
         scores_parser.add_argument("scores_action", choices=["refresh", "show", "auto-match"], help="Score action")
+        scores_parser.add_argument("--source", choices=["aa", "arena"], default="aa", help="Score source to refresh")
         args = scores_parser.parse_args()
 
         load_env()

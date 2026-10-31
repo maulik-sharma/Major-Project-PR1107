@@ -1,22 +1,17 @@
-"""Scores tab in Settings displaying Artificial Analysis benchmark scores and manual overrides."""
+"""Scores tab in Settings: Artificial Analysis and LMArena scores, links, and manual overrides."""
 
 from __future__ import annotations
 
 import datetime
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QDialog,
-    QDialogButtonBox,
-    QDoubleSpinBox,
-    QFormLayout,
-    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QLineEdit,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -27,89 +22,44 @@ from PyQt6.QtWidgets import (
 
 from modelmesh.core.config.routing_config import load_routing_config
 from modelmesh.core.registry import ModelRegistry
-from modelmesh.core.scores.matcher import suggest_model_slugs
-from modelmesh.core.scores.snapshots import (
-    EffectiveScores,
-    ScoreSnapshot,
-    ScoreStore,
-    resolve_effective_scores,
-)
+from modelmesh.core.scores.aa_client import ATTRIBUTION_TEXT
+from modelmesh.core.scores.arena_client import ARENA_ATTRIBUTION_TEXT, ARENA_SOURCE
+from modelmesh.core.scores.matcher import arena_votes, match_identifiers, strict_match
+from modelmesh.core.scores.snapshots import ScoreSnapshot, ScoreStore, resolve_effective_scores
 from modelmesh.core.storage import get_default_storage
-from modelmesh.core.types import ManualScoresConfig, ModelConfig, ModelScoresConfig
+from modelmesh.core.types import ModelConfig
+from modelmesh.ui.settings.scores_dialog import EditModelScoresDialog
 from modelmesh.ui.workers import ScoresRefreshWorker
 
+AA_SOURCE = "artificial_analysis"
+COLUMNS = [
+    "Model", "AA Slug", "Intelligence", "Coding", "Agentic",
+    "Arena Name", "Arena Overall", "Arena Coding", "Status", "Action",
+]
+_REFRESH_LABELS = {AA_SOURCE: "Refresh AA Scores", ARENA_SOURCE: "Refresh Arena"}
 
-class EditModelScoresDialog(QDialog):
-    """Dialog for editing manual score overrides and AA slug for a logical model."""
 
-    def __init__(
-        self,
-        model: ModelConfig,
-        available_slugs: List[str],
-        parent: Optional[QWidget] = None,
-    ) -> None:
-        super().__init__(parent)
-        self.setWindowTitle(f"Edit Scores - {model.display_name}")
-        self.setFixedWidth(440)
-        self.model = model
+def _records(snapshot: Optional[ScoreSnapshot]) -> List[Dict[str, Any]]:
+    return list(snapshot.models_by_slug.values()) if snapshot else []
 
-        layout = QVBoxLayout(self)
-        layout.setSpacing(12)
 
-        form = QFormLayout()
+def _cell(text: str, tooltip: str = "", center: bool = True) -> QTableWidgetItem:
+    item = QTableWidgetItem(text)
+    if center:
+        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+    if tooltip:
+        item.setToolTip(tooltip)
+    return item
 
-        # AA Slug
-        self.slug_input = QLineEdit()
-        self.slug_input.setText(model.scores.aa_slug or "")
-        self.slug_input.setPlaceholderText("e.g. anthropic/claude-3-5-sonnet")
-        form.addRow("AA Slug:", self.slug_input)
 
-        # Manual Overrides
-        man = model.scores.manual
-        self.intel_spin = QDoubleSpinBox()
-        self.intel_spin.setRange(0.0, 100.0)
-        self.intel_spin.setDecimals(1)
-        self.intel_spin.setSpecialValueText("Auto / None")
-        self.intel_spin.setValue(man.intelligence if man.intelligence is not None else 0.0)
-        form.addRow("Manual Intelligence:", self.intel_spin)
-
-        self.coding_spin = QDoubleSpinBox()
-        self.coding_spin.setRange(0.0, 100.0)
-        self.coding_spin.setDecimals(1)
-        self.coding_spin.setSpecialValueText("Auto / None")
-        self.coding_spin.setValue(man.coding if man.coding is not None else 0.0)
-        form.addRow("Manual Coding:", self.coding_spin)
-
-        self.agent_spin = QDoubleSpinBox()
-        self.agent_spin.setRange(0.0, 100.0)
-        self.agent_spin.setDecimals(1)
-        self.agent_spin.setSpecialValueText("Auto / None")
-        self.agent_spin.setValue(man.agentic if man.agentic is not None else 0.0)
-        form.addRow("Manual Agentic:", self.agent_spin)
-
-        layout.addLayout(form)
-
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
-
-    def get_values(self) -> tuple[Optional[str], ManualScoresConfig]:
-        slug = self.slug_input.text().strip() or None
-        intel = self.intel_spin.value() if self.intel_spin.value() > 0.0 else None
-        coding = self.coding_spin.value() if self.coding_spin.value() > 0.0 else None
-        agent = self.agent_spin.value() if self.agent_spin.value() > 0.0 else None
-        return slug, ManualScoresConfig(
-            intelligence=intel,
-            coding=coding,
-            agentic=agent,
-        )
+def _num(value: Optional[float], manual: bool, decimals: int = 1) -> str:
+    if value is None:
+        return "—"
+    return f"{value:.{decimals}f}" + (" (M)" if manual else "")
 
 
 class ScoresTab(QWidget):
-    """Settings tab displaying model scores, linking, overrides, and AA refresh."""
+    """Settings tab: model scores from both sources, link checks, overrides, and refresh."""
 
     config_changed = pyqtSignal()
 
@@ -124,6 +74,8 @@ class ScoresTab(QWidget):
         self.storage = storage or get_default_storage()
         self.store = ScoreStore(self.storage)
         self._refresh_worker: Optional[ScoresRefreshWorker] = None
+        # model id -> (suggested aa slug, suggested arena name) where the current link looks wrong
+        self._stale: Dict[str, Tuple[Optional[str], Optional[str]]] = {}
 
         self._setup_ui()
         self.refresh()
@@ -133,169 +85,136 @@ class ScoresTab(QWidget):
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
 
-        # Header controls
-        header_layout = QHBoxLayout()
-        self.refresh_btn = QPushButton("Refresh Scores")
-        self.refresh_btn.setToolTip("Fetch latest score snapshot from Artificial Analysis")
-        self.refresh_btn.clicked.connect(self._on_refresh_clicked)
-        header_layout.addWidget(self.refresh_btn)
+        header = QHBoxLayout()
+        self.refresh_btn = QPushButton(_REFRESH_LABELS[AA_SOURCE])
+        self.refresh_btn.setToolTip("Fetch the latest snapshot from Artificial Analysis (uses your daily quota)")
+        self.refresh_btn.clicked.connect(lambda: self._start_refresh(AA_SOURCE))
+        header.addWidget(self.refresh_btn)
 
-        self.automatch_btn = QPushButton("Auto-match Slugs")
-        self.automatch_btn.setToolTip("Auto-detect AA slugs for unlinked models")
+        self.arena_btn = QPushButton(_REFRESH_LABELS[ARENA_SOURCE])
+        self.arena_btn.setToolTip("Download the latest LMArena text leaderboard")
+        self.arena_btn.clicked.connect(lambda: self._start_refresh(ARENA_SOURCE))
+        header.addWidget(self.arena_btn)
+
+        self.automatch_btn = QPushButton("Auto-match Links")
+        self.automatch_btn.setToolTip("Link unlinked models to exactly matching AA and LMArena entries")
         self.automatch_btn.clicked.connect(self._on_automatch_clicked)
-        header_layout.addWidget(self.automatch_btn)
-
-        header_layout.addStretch()
+        header.addWidget(self.automatch_btn)
+        header.addStretch()
 
         self.snapshot_info_label = QLabel("Loading snapshot info...")
         self.snapshot_info_label.setObjectName("mutedLabel")
-        header_layout.addWidget(self.snapshot_info_label)
+        header.addWidget(self.snapshot_info_label)
+        layout.addLayout(header)
 
-        layout.addLayout(header_layout)
-
-        # Main Table
         self.table = QTableWidget()
-        self.table.setColumnCount(7)
-        self.table.setHorizontalHeaderLabels([
-            "Model",
-            "AA Slug",
-            "Intelligence",
-            "Coding",
-            "Agentic",
-            "Status",
-            "Action",
-        ])
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.setColumnCount(len(COLUMNS))
+        self.table.setHorizontalHeaderLabels(COLUMNS)
+        hdr = self.table.horizontalHeader()
+        for col in range(len(COLUMNS)):
+            hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.cellDoubleClicked.connect(self._on_cell_double_clicked)
         layout.addWidget(self.table)
 
-        # Footer with required attribution and warnings
-        footer_layout = QHBoxLayout()
-        self.attribution_label = QLabel("Model scores: Artificial Analysis")
+        footer = QHBoxLayout()
+        self.attribution_label = QLabel(f"{ATTRIBUTION_TEXT} · {ARENA_ATTRIBUTION_TEXT}")
         self.attribution_label.setObjectName("mutedLabel")
-        footer_layout.addWidget(self.attribution_label)
-
-        self.legend_label = QLabel("•  (M) Manual override  •  — Not benchmarked")
-        self.legend_label.setObjectName("mutedLabel")
-        footer_layout.addWidget(self.legend_label)
-
-        footer_layout.addStretch()
-
+        footer.addWidget(self.attribution_label)
+        legend = QLabel("•  (M) Manual override  •  — Not benchmarked")
+        legend.setObjectName("mutedLabel")
+        footer.addWidget(legend)
+        footer.addStretch()
         self.warnings_label = QLabel("")
         self.warnings_label.setStyleSheet("color: #eab308; font-size: 11.5px;")
-        footer_layout.addWidget(self.warnings_label)
+        footer.addWidget(self.warnings_label)
+        layout.addLayout(footer)
 
-        layout.addLayout(footer_layout)
+    def _snapshots(self) -> Tuple[Optional[ScoreSnapshot], Optional[str], Optional[ScoreSnapshot]]:
+        aa, note = self.store.get_active_snapshot(self.registry.models())
+        return aa, note, self.store.get_latest_snapshot(source=ARENA_SOURCE)
+
+    def _update_info(self, aa: Optional[ScoreSnapshot], note: Optional[str], arena: Optional[ScoreSnapshot]) -> None:
+        parts = []
+        if aa:
+            day = datetime.datetime.fromtimestamp(aa.fetched_at).strftime("%Y-%m-%d")
+            parts.append(f"AA: index v{aa.index_version or '?'} ({day})" + ("  ⚠ older index kept" if note else ""))
+        else:
+            parts.append("AA: no snapshot")
+        parts.append(f"Arena: {arena.index_version or '?'}" if arena else "Arena: no snapshot")
+        self.snapshot_info_label.setText("   ·   ".join(parts))
+        self.snapshot_info_label.setToolTip(note or "")
 
     def refresh(self) -> None:
-        """Reload snapshot and populate model table."""
-        snapshot, note = self.store.get_active_snapshot(self.registry.models())
-        if snapshot:
-            dt_str = datetime.datetime.fromtimestamp(snapshot.fetched_at).strftime("%Y-%m-%d %H:%M")
-            count = len(snapshot.models_by_slug)
-            rem = f", {snapshot.rate_limit_remaining} reqs left" if snapshot.rate_limit_remaining is not None else ""
-            kept = "  ⚠ older index kept" if note else ""
-            self.snapshot_info_label.setText(
-                f"Snapshot: {dt_str}, index v{snapshot.index_version or '?'} ({count} models{rem}){kept}"
-            )
-            self.snapshot_info_label.setToolTip(note or "")
-        else:
-            self.snapshot_info_label.setText("No snapshot cached (using local defaults)")
+        """Reload snapshots and populate the model table."""
+        aa, note, arena = self._snapshots()
+        self._update_info(aa, note, arena)
+        aa_records, arena_records = _records(aa), _records(arena)
 
         models = self.registry.models()
         self.table.setRowCount(len(models))
-
-        unscored_count = 0
-
+        self._stale.clear()
+        unscored = 0
         for row, m in enumerate(models):
-            eff: EffectiveScores = resolve_effective_scores(m, snapshot)
-            if eff.is_unscored:
-                unscored_count += 1
+            eff = resolve_effective_scores(m, aa, arena)
+            man = m.scores.manual
+            unscored += int(eff.is_unscored)
 
-            # 0. Model
-            m_item = QTableWidgetItem(f"{m.display_name} ({m.id})")
-            self.table.setItem(row, 0, m_item)
+            ids = match_identifiers(m)
+            aa_hint = strict_match(ids, aa_records) if aa_records else None
+            arena_hint = strict_match(ids, arena_records, arena_votes) if arena_records else None
+            stale_aa = aa_hint if (m.scores.aa_slug and aa_hint and aa_hint != m.scores.aa_slug) else None
+            stale_arena = arena_hint if (m.scores.arena_name and arena_hint and arena_hint != m.scores.arena_name) else None
+            if stale_aa or stale_arena:
+                self._stale[m.id] = (stale_aa, stale_arena)
 
-            # 1. AA Slug
-            slug_text = m.scores.aa_slug or "— (Unlinked)"
-            slug_item = QTableWidgetItem(slug_text)
-            if not m.scores.aa_slug:
-                slug_item.setForeground(Qt.GlobalColor.gray)
-            self.table.setItem(row, 1, slug_item)
+            self.table.setItem(row, 0, _cell(f"{m.display_name} ({m.id})", center=False))
+            self.table.setItem(row, 1, self._link_cell(m.scores.aa_slug, stale_aa))
+            self.table.setItem(row, 2, _cell(_num(eff.intelligence, man.intelligence is not None)))
+            self.table.setItem(row, 3, _cell(_num(eff.coding, man.coding is not None)))
+            self.table.setItem(row, 4, _cell(_num(eff.agentic, man.agentic is not None)))
+            self.table.setItem(row, 5, self._link_cell(m.scores.arena_name, stale_arena))
+            self.table.setItem(row, 6, _cell(_num(eff.arena.get("overall"), man.arena_text_elo is not None, 0)))
+            self.table.setItem(row, 7, _cell(_num(eff.arena.get("coding"), False, 0)))
+            self.table.setItem(row, 8, self._status_cell(eff.is_unscored, m.id in self._stale))
 
-            # 2. Intelligence
-            int_val = f"{eff.intelligence:.1f}" if eff.intelligence is not None else "—"
-            if m.scores.manual.intelligence is not None:
-                int_val += " (M)"
-            int_item = QTableWidgetItem(int_val)
-            int_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            if m.scores.manual.intelligence is not None:
-                int_item.setToolTip("Manual override configured in providers.yaml")
-            elif eff.intelligence is not None:
-                int_item.setToolTip("Artificial Analysis Intelligence Index")
-            self.table.setItem(row, 2, int_item)
-
-            # 3. Coding
-            if eff.coding is not None:
-                if m.scores.manual.coding is not None:
-                    code_val = f"{eff.coding:.1f} (M)"
-                    code_tip = "Manual override configured in providers.yaml"
-                else:
-                    code_val = f"{eff.coding:.1f}"
-                    code_tip = "Artificial Analysis Coding Index (SWE-bench / HumanEval composite)"
-            else:
-                code_val = "—"
-                code_tip = "Not benchmarked; Smart ranks coding tasks on intelligence when any model lacks this"
-            code_item = QTableWidgetItem(code_val)
-            code_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            code_item.setToolTip(code_tip)
-            self.table.setItem(row, 3, code_item)
-
-            # 4. Agentic
-            if eff.agentic is not None:
-                if m.scores.manual.agentic is not None:
-                    agent_val = f"{eff.agentic:.1f} (M)"
-                    agent_tip = "Manual override configured in providers.yaml"
-                else:
-                    agent_val = f"{eff.agentic:.1f}"
-                    agent_tip = "Artificial Analysis Agentic Tool-Use Index"
-            else:
-                agent_val = "—"
-                agent_tip = "Not benchmarked; Smart ranks agentic tasks on intelligence when any model lacks this"
-            agent_item = QTableWidgetItem(agent_val)
-            agent_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            agent_item.setToolTip(agent_tip)
-            self.table.setItem(row, 4, agent_item)
-
-            # 5. Status
-            status_text = "OK" if not eff.is_unscored else "Unscored"
-            status_item = QTableWidgetItem(status_text)
-            status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            if eff.is_unscored:
-                status_item.setForeground(Qt.GlobalColor.darkYellow)
-            else:
-                status_item.setForeground(Qt.GlobalColor.darkGreen)
-            self.table.setItem(row, 5, status_item)
-
-            # 6. Action Edit Button
             edit_btn = QPushButton("Edit")
             edit_btn.setFixedWidth(50)
             edit_btn.clicked.connect(lambda _, model=m: self._on_edit_model(model))
-            self.table.setCellWidget(row, 6, edit_btn)
+            self.table.setCellWidget(row, 9, edit_btn)
 
-        if unscored_count > 0:
-            self.warnings_label.setText(f"⚠ {unscored_count} model(s) are unscored")
+        warnings = []
+        if unscored:
+            warnings.append(f"⚠ {unscored} model(s) unscored")
+        if self._stale:
+            warnings.append(f"⚠ {len(self._stale)} link(s) to check")
+        self.warnings_label.setText("   ".join(warnings))
+
+    @staticmethod
+    def _link_cell(link: Optional[str], suggestion: Optional[str]) -> QTableWidgetItem:
+        item = _cell(link or "— (Unlinked)", center=False)
+        if not link:
+            item.setForeground(Qt.GlobalColor.gray)
+        if suggestion:
+            item.setForeground(Qt.GlobalColor.darkYellow)
+            item.setToolTip(f"The endpoint's model matches '{suggestion}' exactly. Auto-match Links can switch to it.")
+        return item
+
+    @staticmethod
+    def _status_cell(is_unscored: bool, stale: bool) -> QTableWidgetItem:
+        if stale:
+            item = _cell("Check link", "A link points at a different model version than the endpoint calls")
+            item.setForeground(Qt.GlobalColor.darkYellow)
+        elif is_unscored:
+            item = _cell("Unscored", "No score from either source; Smart routing skips this model")
+            item.setForeground(Qt.GlobalColor.darkYellow)
         else:
-            self.warnings_label.setText("")
+            item = _cell("OK")
+            item.setForeground(Qt.GlobalColor.darkGreen)
+        return item
 
     def _on_cell_double_clicked(self, row: int, col: int) -> None:
         models = self.registry.models()
@@ -303,40 +222,37 @@ class ScoresTab(QWidget):
             self._on_edit_model(models[row])
 
     def _on_edit_model(self, model: ModelConfig) -> None:
-        snapshot = self.store.get_latest_snapshot()
-        available_slugs = list(snapshot.models_by_slug.keys()) if snapshot else []
-
-        dialog = EditModelScoresDialog(model, available_slugs, parent=self)
+        dialog = EditModelScoresDialog(model, parent=self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            slug, manual = dialog.get_values()
-            model.scores.aa_slug = slug
-            model.scores.manual = manual
+            model.scores.aa_slug, model.scores.arena_name, model.scores.manual = dialog.get_values()
+            self._save()
 
-            self.registry.save()
-            self.refresh()
-            self.config_changed.emit()
+    def _save(self) -> None:
+        self.registry.save()
+        self.refresh()
+        self.config_changed.emit()
 
-    def _on_refresh_clicked(self) -> None:
+    def _start_refresh(self, source: str) -> None:
         if self._refresh_worker and self._refresh_worker.isRunning():
             return
-        if not self._confirm_refresh_if_recent():
+        if source == AA_SOURCE and not self._confirm_aa_refresh_if_recent():
             return
-
+        btn = self.refresh_btn if source == AA_SOURCE else self.arena_btn
         self.refresh_btn.setEnabled(False)
-        self.refresh_btn.setText("Fetching...")
-
-        self._refresh_worker = ScoresRefreshWorker(storage=self.storage, parent=self)
+        self.arena_btn.setEnabled(False)
+        btn.setText("Fetching...")
+        self._refresh_worker = ScoresRefreshWorker(storage=self.storage, parent=self, source=source)
         self._refresh_worker.finished_refresh.connect(self._on_refresh_finished)
         self._refresh_worker.error_occurred.connect(self._on_refresh_error)
         self._refresh_worker.start()
 
-    def _confirm_refresh_if_recent(self) -> bool:
-        """Free-tier requests are limited: ask first if the snapshot is newer than the configured interval."""
-        snapshot = self.store.get_latest_snapshot()
-        if snapshot is None:
+    def _confirm_aa_refresh_if_recent(self) -> bool:
+        """Free-tier AA requests are limited: ask first if the snapshot is newer than the configured interval."""
+        newest = self.store.get_latest_snapshot()
+        if newest is None:
             return True
         min_days = load_routing_config().scores.refresh_min_interval_days
-        age_days = (time.time() - snapshot.fetched_at) / 86400
+        age_days = (time.time() - newest.fetched_at) / 86400
         if age_days >= min_days:
             return True
         reply = QMessageBox.question(
@@ -348,58 +264,68 @@ class ScoresTab(QWidget):
         )
         return reply == QMessageBox.StandardButton.Yes
 
-    def _on_refresh_finished(self, data: Dict[str, Any]) -> None:
+    def _reset_buttons(self) -> None:
         self.refresh_btn.setEnabled(True)
-        self.refresh_btn.setText("Refresh Scores")
+        self.arena_btn.setEnabled(True)
+        self.refresh_btn.setText(_REFRESH_LABELS[AA_SOURCE])
+        self.arena_btn.setText(_REFRESH_LABELS[ARENA_SOURCE])
+
+    def _on_refresh_finished(self, data: Dict[str, Any]) -> None:
+        self._reset_buttons()
+        name = "LMArena" if data.get("source") == ARENA_SOURCE else "Artificial Analysis"
         QMessageBox.information(
-            self,
-            "Scores Refreshed",
-            f"Successfully updated snapshot with {data.get('models_count', 0)} models from Artificial Analysis.",
+            self, "Scores Refreshed",
+            f"Updated snapshot with {data.get('models_count', 0)} models from {name}.",
         )
         self.refresh()
         self.config_changed.emit()
 
     def _on_refresh_error(self, err_msg: str) -> None:
-        self.refresh_btn.setEnabled(True)
-        self.refresh_btn.setText("Refresh Scores")
-        QMessageBox.warning(
-            self,
-            "Refresh Failed",
-            f"Could not refresh scores from Artificial Analysis:\n{err_msg}",
-        )
+        self._reset_buttons()
+        QMessageBox.warning(self, "Refresh Failed", f"Could not refresh scores:\n{err_msg}")
 
     def _on_automatch_clicked(self) -> None:
-        snapshot = self.store.get_latest_snapshot()
-        if not snapshot:
-            QMessageBox.warning(self, "No Snapshot", "Please refresh scores snapshot first.")
+        aa, _, arena = self._snapshots()
+        if not aa and not arena:
+            QMessageBox.warning(self, "No Snapshot", "Refresh AA scores or the Arena leaderboard first.")
             return
-
-        raw_models = snapshot.raw_payload.get("models") or list(snapshot.models_by_slug.values())
-        updated = 0
-
+        aa_records, arena_records = _records(aa), _records(arena)
+        linked = 0
         for model in self.registry.models():
-            if not model.scores.aa_slug:
-                suggs = suggest_model_slugs(model.id, raw_models, limit=1)
-                if suggs:
-                    top_match = suggs[0]
-                    slug_val = top_match.get("slug") if isinstance(top_match, dict) else str(top_match)
-                    if slug_val:
-                        model.scores.aa_slug = slug_val
-                        updated += 1
+            ids = match_identifiers(model)
+            if not model.scores.aa_slug and aa_records:
+                model.scores.aa_slug = strict_match(ids, aa_records)
+                linked += int(bool(model.scores.aa_slug))
+            if not model.scores.arena_name and arena_records:
+                model.scores.arena_name = strict_match(ids, arena_records, arena_votes)
+                linked += int(bool(model.scores.arena_name))
 
-        if updated > 0:
-            self.registry.save()
-            self.refresh()
-            self.config_changed.emit()
-            QMessageBox.information(
-                self,
-                "Auto-match Complete",
-                f"Auto-matched and updated AA slugs for {updated} model(s).",
+        fixed = 0
+        if self._stale:
+            lines = []
+            for mid, (aa_s, ar_s) in self._stale.items():
+                m = self.registry.get_model(mid)
+                if aa_s:
+                    lines.append(f"{mid}: AA {m.scores.aa_slug} → {aa_s}")
+                if ar_s:
+                    lines.append(f"{mid}: Arena {m.scores.arena_name} → {ar_s}")
+            reply = QMessageBox.question(
+                self, "Fix Links?",
+                "These links point at a different model version than the endpoint calls:\n\n"
+                + "\n".join(lines) + "\n\nSwitch them to the exact matches?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
-        else:
-            QMessageBox.information(
-                self,
-                "Auto-match",
-                "No additional model slug matches found.",
-            )
+            if reply == QMessageBox.StandardButton.Yes:
+                for mid, (aa_s, ar_s) in self._stale.items():
+                    m = self.registry.get_model(mid)
+                    m.scores.aa_slug = aa_s or m.scores.aa_slug
+                    m.scores.arena_name = ar_s or m.scores.arena_name
+                    fixed += int(bool(aa_s)) + int(bool(ar_s))
 
+        if linked or fixed:
+            self._save()
+        QMessageBox.information(
+            self, "Auto-match",
+            f"Linked {linked} and fixed {fixed} score link(s)." if (linked or fixed)
+            else "No exact matches found for unlinked models. Use Edit to link them by hand.",
+        )

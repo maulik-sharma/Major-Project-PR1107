@@ -154,8 +154,9 @@ def test_settings_dialog(qapp) -> None:
     assert dlg.providers_tab.provider_list.count() >= 1
     assert dlg.models_tab.table.rowCount() >= 1
     assert dlg.models_tab.table.columnCount() == 8
-    assert dlg.scores_tab.table.columnCount() == 7
-    assert dlg.scores_tab.attribution_label.text() == "Model scores: Artificial Analysis"
+    assert dlg.scores_tab.table.columnCount() == 10
+    assert dlg.scores_tab.attribution_label.text().startswith("Model scores: Artificial Analysis")
+    assert "LMArena" in dlg.scores_tab.attribution_label.text()
 
     # Test appearance theme change
     theme_events = []
