@@ -159,3 +159,26 @@ Use indexes wisely.
     deleted = loader.delete_skill("custom-sql")
     assert deleted is True
     assert loader.get_skill("custom-sql") is None
+
+
+def test_skill_names_and_paths_cannot_escape(tmp_path) -> None:
+    import pytest as _pytest
+
+    from modelmesh.core.skills import format_skill_md, safe_skill_path, skill_slug
+
+    assert skill_slug("SQL Expert") == "sql-expert"
+    for bad in ("../x", "a/b", "", ".hidden", "x" * 80):
+        with _pytest.raises(ValueError):
+            skill_slug(bad)
+    folder = tmp_path / "skill"
+    folder.mkdir()
+    assert safe_skill_path(folder, "docs/guide.md") == (folder / "docs" / "guide.md").resolve()
+    for bad in ("../../etc/passwd", "/etc/passwd", "."):
+        with _pytest.raises(ValueError):
+            safe_skill_path(folder, bad)
+
+    import yaml
+
+    text = format_skill_md("x", "Use: when SQL is slow", "Body")
+    meta = yaml.safe_load(text.split("---")[1])
+    assert meta == {"name": "x", "description": "Use: when SQL is slow"}

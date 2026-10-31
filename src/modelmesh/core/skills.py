@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,6 +13,33 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import yaml
 
 from modelmesh.core.types import ToolSpec
+
+_SLUG = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
+def skill_slug(name: str) -> str:
+    """Turn a skill name into a folder-safe slug. Raises ValueError if it can't be one."""
+    slug = name.strip().lower().replace(" ", "-")
+    if not _SLUG.match(slug):
+        raise ValueError(
+            f"Invalid skill name '{name}': use letters, digits, '-' or '_' (max 64), starting with a letter or digit."
+        )
+    return slug
+
+
+def safe_skill_path(folder: Path, rel_path: str) -> Path:
+    """Resolve a path inside a skill folder. Raises ValueError if it would escape the folder."""
+    base = folder.resolve()
+    target = (base / rel_path).resolve()
+    if target == base or base not in target.parents:
+        raise ValueError(f"Path '{rel_path}' is outside the skill folder.")
+    return target
+
+
+def format_skill_md(name: str, description: str, body: str) -> str:
+    """Build SKILL.md text with YAML front matter that is safe for any description."""
+    front = yaml.safe_dump({"name": name, "description": description}, sort_keys=False, allow_unicode=True)
+    return f"---\n{front}---\n\n{body.strip()}\n"
 
 
 @dataclass
@@ -188,8 +216,7 @@ class SkillLoader:
                 meta = yaml.safe_load(parts[1]) or {}
                 name = str(meta.get("name", name))
 
-        folder_name = name.lower().replace(" ", "-")
-        target_dir = self.skills_dir / folder_name
+        target_dir = self.skills_dir / skill_slug(name)
         target_dir.mkdir(parents=True, exist_ok=True)
         (target_dir / "SKILL.md").write_text(content, encoding="utf-8")
 
@@ -201,7 +228,7 @@ class SkillLoader:
         if not source_folder.exists() or not source_folder.is_dir():
             return None
 
-        target_dir = self.skills_dir / source_folder.name
+        target_dir = self.skills_dir / skill_slug(source_folder.name)
         if target_dir.exists() and target_dir.resolve() != source_folder.resolve():
             shutil.rmtree(target_dir)
 
@@ -222,18 +249,18 @@ class SkillLoader:
         body: str,
         subfiles: Optional[Dict[str, str]] = None,
     ) -> Skill:
-        """Create a new skill directory with frontmatter and optional subfiles."""
-        clean_name = name.strip().lower().replace(" ", "-")
-        folder = self.skills_dir / clean_name
-        folder.mkdir(parents=True, exist_ok=True)
+        """Create a new skill directory with frontmatter and optional subfiles.
 
-        frontmatter = f"---\nname: {name}\ndescription: {description}\n---\n\n"
-        full_content = frontmatter + body.strip() + "\n"
-        (folder / "SKILL.md").write_text(full_content, encoding="utf-8")
+        Raises:
+            ValueError: invalid name or a subfile path outside the skill folder.
+        """
+        folder = self.skills_dir / skill_slug(name)
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "SKILL.md").write_text(format_skill_md(name, description, body), encoding="utf-8")
 
         if subfiles:
             for rel_path, content in subfiles.items():
-                dest_file = folder / rel_path
+                dest_file = safe_skill_path(folder, rel_path)
                 dest_file.parent.mkdir(parents=True, exist_ok=True)
                 dest_file.write_text(content, encoding="utf-8")
 

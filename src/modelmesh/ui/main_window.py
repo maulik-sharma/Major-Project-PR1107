@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from PyQt6.QtCore import Qt, pyqtSlot
@@ -441,22 +440,6 @@ class MainWindow(QMainWindow):
     def _on_skills_changed(self) -> None:
         """Update composer autocomplete when skills change."""
         self.composer.set_skill_loader(self.engine.skill_loader)
-
-    def _create_new_skill(self) -> None:
-        """Open create skill dialog and refresh workspace on save."""
-        from modelmesh.ui.settings.tools_tab import CreateSkillDialog
-        skills_dir = (
-            self.engine.skill_loader.skills_dir
-            if self.engine.skill_loader
-            else Path.cwd() / "skills"
-        )
-        dlg = CreateSkillDialog(skills_dir=skills_dir, parent=self)
-        if dlg.exec() == CreateSkillDialog.DialogCode.Accepted:
-            if self.engine.skill_loader:
-                self.engine.skill_loader.reload()
-            self.skills_view.refresh_skills()
-            self._on_skills_changed()
-            self.status_bar.showMessage("New skill created successfully.")
 
     def _open_settings_dialog(self, tab_index: int = 0) -> None:
         dlg = SettingsDialog(

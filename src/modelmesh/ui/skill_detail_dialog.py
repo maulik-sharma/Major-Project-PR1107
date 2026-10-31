@@ -25,7 +25,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from modelmesh.core.skills import Skill, SkillLoader
+from modelmesh.core.skills import Skill, SkillLoader, safe_skill_path
 
 
 class SkillDetailDialog(QDialog):
@@ -247,7 +247,7 @@ class SkillDetailDialog(QDialog):
             if key == "SKILL.md":
                 self.skill.path.write_text(text, encoding="utf-8")
             else:
-                target = self.skill.folder_path / key
+                target = safe_skill_path(self.skill.folder_path, key)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(text, encoding="utf-8")
 
@@ -267,12 +267,15 @@ class SkillDetailDialog(QDialog):
             "Enter relative path (e.g. scripts/setup.py, docs/guide.md):",
         )
         if ok and rel_path.strip():
-            clean_rel = os.path.normpath(rel_path.strip()).lstrip("/\\")
+            clean_rel = os.path.normpath(rel_path.strip())
             if clean_rel == "SKILL.md":
                 QMessageBox.warning(self, "Invalid Path", "SKILL.md already exists as the root instruction file.")
                 return
-
-            target = self.skill.folder_path / clean_rel
+            try:
+                target = safe_skill_path(self.skill.folder_path, clean_rel)
+            except ValueError as exc:
+                QMessageBox.warning(self, "Invalid Path", str(exc))
+                return
             target.parent.mkdir(parents=True, exist_ok=True)
             if not target.exists():
                 target.write_text(f"# {Path(clean_rel).name}\n\n", encoding="utf-8")

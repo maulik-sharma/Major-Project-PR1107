@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtCore import QSettings, QStandardPaths, Qt
+
+from modelmesh.core.skills import format_skill_md, skill_slug
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -88,18 +90,24 @@ class CreateSkillDialog(QDialog):
         layout.addWidget(buttons)
 
     def _on_save(self) -> None:
-        name = self.name_input.text().strip().lower().replace(" ", "-")
         desc = self.desc_input.text().strip()
         body = self.body_input.toPlainText().strip()
-
-        if not name:
-            QMessageBox.warning(self, "Invalid Input", "Please provide a skill name.")
+        try:
+            name = skill_slug(self.name_input.text())
+        except ValueError as exc:
+            QMessageBox.warning(self, "Invalid Name", str(exc))
             return
 
-        skill_dir = self.skills_dir / name
-        skill_dir.mkdir(parents=True, exist_ok=True)
-        skill_file = skill_dir / "SKILL.md"
-
-        content = f"---\nname: {name}\ndescription: {desc}\n---\n\n{body}\n"
-        skill_file.write_text(content, encoding="utf-8")
+        skill_file = self.skills_dir / name / "SKILL.md"
+        if skill_file.exists():
+            reply = QMessageBox.question(
+                self,
+                "Skill Exists",
+                f"A skill named '{name}' already exists. Replace its instructions?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        skill_file.parent.mkdir(parents=True, exist_ok=True)
+        skill_file.write_text(format_skill_md(name, desc, body), encoding="utf-8")
         self.accept()
