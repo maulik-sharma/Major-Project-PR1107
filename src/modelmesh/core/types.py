@@ -262,6 +262,41 @@ class StreamEvent:
 
 
 @dataclass
+class CatalogSettings:
+    """How to check a provider's live model list (see core/catalog).
+
+    ``format`` names the list API's shape (``openai``, ``gemini``, ``anthropic``);
+    ``url`` overrides where it is fetched (default: ``{base_url}/models``).
+    ``free_only`` offers only models the list prices at $0; ``assume_free``
+    treats every model as $0 (an account on a free plan). ``include``/``exclude``
+    are glob patterns on model ids.
+    """
+    format: str = "openai"
+    url: Optional[str] = None
+    free_only: bool = False
+    assume_free: bool = False
+    include: List[str] = field(default_factory=lambda: ["*"])
+    exclude: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "format": self.format, "url": self.url, "free_only": self.free_only,
+            "assume_free": self.assume_free, "include": self.include, "exclude": self.exclude,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> CatalogSettings:
+        return cls(
+            format=str(data.get("format", "openai")),
+            url=data.get("url"),
+            free_only=bool(data.get("free_only", False)),
+            assume_free=bool(data.get("assume_free", False)),
+            include=list(data.get("include") or ["*"]),
+            exclude=list(data.get("exclude") or []),
+        )
+
+
+@dataclass
 class ProviderConfig:
     """Configuration for an LLM provider."""
     id: str
@@ -272,9 +307,10 @@ class ProviderConfig:
     connect_timeout: float = 10.0
     read_timeout: float = 120.0
     extra_headers: Dict[str, str] = field(default_factory=dict)
+    catalog: Optional[CatalogSettings] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        data: Dict[str, Any] = {
             "id": self.id,
             "protocol": self.protocol,
             "base_url": self.base_url,
@@ -284,6 +320,9 @@ class ProviderConfig:
             "read_timeout": self.read_timeout,
             "extra_headers": self.extra_headers,
         }
+        if self.catalog is not None:
+            data["catalog"] = self.catalog.to_dict()
+        return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> ProviderConfig:
@@ -296,6 +335,7 @@ class ProviderConfig:
             connect_timeout=float(data.get("connect_timeout", 10.0)),
             read_timeout=float(data.get("read_timeout", 120.0)),
             extra_headers=data.get("extra_headers", {}),
+            catalog=CatalogSettings.from_dict(data["catalog"]) if data.get("catalog") else None,
         )
 
 
