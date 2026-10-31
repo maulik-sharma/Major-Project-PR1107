@@ -6,7 +6,7 @@ No I/O (Rule 18): plain data in, plain data out.
 from __future__ import annotations
 
 import fnmatch
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from modelmesh.core.errors import RoutingError
 from modelmesh.core.routing.base import sort_endpoints
@@ -16,6 +16,7 @@ from modelmesh.core.types import Candidate
 
 # Where an unscored model of each tier lands in the scored pool under `tier_default`.
 _TIER_QUANTILES = {"cheap": 0.25, "mid": 0.5, "premium": 0.75}
+DEFAULT_MIN_COVERAGE = 0.75
 
 
 def _matches_any_pattern(val: str, patterns: List[str]) -> bool:
@@ -30,9 +31,47 @@ def _estimate_cost(cand: Candidate, tokens_in: int, tokens_out: int) -> float:
 
 
 def _metric_value(eff: Optional[EffectiveScores], metric: str) -> Optional[float]:
-    if eff is None:
-        return None
-    return {"coding": eff.coding, "agentic": eff.agentic}.get(metric, eff.intelligence)
+    return eff.metric(metric) if eff is not None else None
+
+
+def metric_preferences(metric: Union[str, Sequence[str]]) -> List[str]:
+    """Normalise a task metric setting to an ordered preference list.
+
+    A single name keeps the old behaviour: that metric, else intelligence.
+    """
+    if isinstance(metric, str):
+        return [metric] if metric == "intelligence" else [metric, "intelligence"]
+    prefs = [m for m in metric if m]
+    return prefs or ["intelligence"]
+
+
+def choose_metric(
+    model_ids: Sequence[str],
+    effective_scores: Dict[str, EffectiveScores],
+    preferences: Sequence[str],
+    min_coverage: float,
+) -> Tuple[Optional[str], List[str]]:
+    """Pick one metric to rank the whole pool on.
+
+    A model counts as scored for this task if it has any preferred metric. The
+    first preferred metric that covers at least ``min_coverage`` of the scored
+    models wins; if none does, the one with the widest coverage. Scores from
+    different metrics are never mixed.
+
+    Returns (metric or None when nothing is scored, scored models lacking that metric).
+    """
+    scored = [m for m in model_ids if any(_metric_value(effective_scores.get(m), p) is not None for p in preferences)]
+    if not scored:
+        return None, []
+
+    def covered(metric: str) -> List[str]:
+        return [m for m in scored if _metric_value(effective_scores.get(m), metric) is not None]
+
+    chosen = next((p for p in preferences if len(covered(p)) >= min_coverage * len(scored)), None)
+    if chosen is None:
+        chosen = max(preferences, key=lambda p: (len(covered(p)), -list(preferences).index(p)))
+    have = set(covered(chosen))
+    return chosen, [m for m in scored if m not in have]
 
 
 def _quantile(values: List[float], q: float) -> float:
@@ -77,30 +116,26 @@ def filter_pool(
 def resolve_pool_scores(
     pool: List[Candidate],
     effective_scores: Dict[str, EffectiveScores],
-    metric: str,
+    metric: Union[str, Sequence[str]],
     unscored_policy: str,
-) -> Tuple[Dict[str, float], str, List[str]]:
-    """Score each model in the pool on one scale.
+    min_coverage: float = DEFAULT_MIN_COVERAGE,
+) -> Tuple[Dict[str, float], Optional[str], List[str], List[str]]:
+    """Score each model in the pool on one scale (see ``choose_metric``).
 
-    The task metric (coding/agentic) is used only if every scored model has it;
-    otherwise the whole pool is scored on intelligence, so real and missing
-    sub-indices are never mixed.
+    Models without the chosen metric are left out, or estimated from the pool's
+    quantiles under ``tier_default``.
 
-    Returns (raw_scores by model_id, metric_used, estimated model_ids).
+    Returns (raw_scores by model_id, metric_used, estimated model_ids, models lacking the metric).
     """
     model_ids = list(dict.fromkeys(c.model_id for c in pool))
-    scored_any = [m for m in model_ids if (effective_scores.get(m) and not effective_scores[m].is_unscored)]
-
-    metric_used = metric
-    if metric != "intelligence":
-        if not scored_any or any(_metric_value(effective_scores.get(m), metric) is None for m in scored_any):
-            metric_used = "intelligence"
+    metric_used, lacking = choose_metric(model_ids, effective_scores, metric_preferences(metric), min_coverage)
 
     raw: Dict[str, float] = {}
-    for m in model_ids:
-        val = _metric_value(effective_scores.get(m), metric_used)
-        if val is not None:
-            raw[m] = val
+    if metric_used is not None:
+        for m in model_ids:
+            val = _metric_value(effective_scores.get(m), metric_used)
+            if val is not None:
+                raw[m] = val
 
     estimated: List[str] = []
     if unscored_policy == "tier_default" and raw:
@@ -110,13 +145,13 @@ def resolve_pool_scores(
             if m not in raw:
                 raw[m] = _quantile(values, _TIER_QUANTILES.get(tiers.get(m, "mid"), 0.5))
                 estimated.append(m)
-    return raw, metric_used, estimated
+    return raw, metric_used, estimated, [m for m in lacking if m not in estimated]
 
 
 def select_smart_candidate(
     candidates: List[Candidate],
     effective_scores: Dict[str, EffectiveScores],
-    metric: str,
+    metric: Union[str, Sequence[str]],
     need: float,
     bar: float,
     task: str = "chat_general",
@@ -126,8 +161,11 @@ def select_smart_candidate(
     unscored_policy: str = "exclude",
     tokens_in_est: int = 500,
     tokens_out_est: int = 1000,
+    min_coverage: float = DEFAULT_MIN_COVERAGE,
 ) -> Tuple[Candidate, List[Candidate], Dict[str, Any]]:
     """Select the cheapest eligible candidate clearing the quality bar.
+
+    ``metric`` is a metric name or an ordered preference list (see ``choose_metric``).
 
     Returns:
         Tuple of (chosen_candidate, fallback_chain, selection_metadata).
@@ -151,9 +189,9 @@ def select_smart_candidate(
     if include_ignored:
         notices.append(f"pool.include {inc_patterns} matched no eligible model and was ignored.")
 
-    raw_scores, metric_used, estimated = resolve_pool_scores(pool, effective_scores, metric, unscored_policy)
-    if metric_used != metric:
-        notices.append(f"Not every candidate has a '{metric}' score; ranked on intelligence instead.")
+    raw_scores, metric_used, estimated, lacking_metric = resolve_pool_scores(
+        pool, effective_scores, metric, unscored_policy, min_coverage
+    )
 
     scored = [c for c in pool if c.model_id in raw_scores]
     unscored_ids = sorted({c.model_id for c in pool} - set(raw_scores))
@@ -176,6 +214,7 @@ def select_smart_candidate(
             "pool_count": len(pool),
             "scores_available": False,
             "unscored_models": unscored_ids,
+            "lacking_metric_models": [],
             "estimated_score_models": [],
             "notices": notices,
         }
@@ -232,6 +271,7 @@ def select_smart_candidate(
         "pool_count": len(pool),
         "scores_available": True,
         "unscored_models": unscored_ids,
+        "lacking_metric_models": sorted(lacking_metric),
         "estimated_score_models": sorted(estimated),
         "notices": notices,
     }

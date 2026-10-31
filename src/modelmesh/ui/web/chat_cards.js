@@ -170,6 +170,13 @@ function update_tool_result(msgId, toolId, toolName, resultStr, errorStr, succes
   entry.body.appendChild(outcome);
 }
 
+// 'arena_coding' -> 'Arena coding', 'intelligence' -> 'AA intelligence'.
+function metricLabel(metric) {
+  if (!metric) return 'none';
+  if (metric.startsWith('arena_')) return `Arena ${metric.slice(6).replace(/_/g, ' ')}`;
+  return `AA ${metric}`;
+}
+
 function buildInsightsHtml(meta) {
   const r = meta.metadata || {};
   const badge = SOURCE_BADGES[r.decision_source];
@@ -182,7 +189,7 @@ function buildInsightsHtml(meta) {
     ['Difficulty', `${fmtNum(r.difficulty)}/4`],
     ['Precision', `${fmtNum(r.precision)}/3`],
     ['Need / Bar', `${fmtNum(r.need)} / ${fmtNum(r.bar)}`],
-    ['Metric', r.metric_used || 'none'],
+    ['Metric', metricLabel(r.metric_used)],
     ['Quality (q)', fmtNum(r.chosen_q)],
   ].map(([label, value]) => `
       <div class="insights-card">
@@ -194,7 +201,8 @@ function buildInsightsHtml(meta) {
   if (Array.isArray(r.candidates) && r.candidates.length) {
     const rows = r.candidates.map(c => {
       const chosen = c.model_id === meta.model_id;
-      const status = chosen ? '✓ Selected' : (c.admitted ? 'Admitted' : 'Below bar');
+      const unscored = c.q === null || c.q === undefined;
+      const status = chosen ? '✓ Selected' : (c.admitted ? 'Admitted' : (unscored ? 'No score' : 'Below bar'));
       return `<tr class="${chosen ? 'chosen-row' : ''}"><td>${escapeHtml(c.model_id)}</td>` +
         `<td>${escapeHtml(fmtNum(c.q))}</td><td>${escapeHtml(status)}</td></tr>`;
     }).join('');
@@ -209,6 +217,9 @@ function buildInsightsHtml(meta) {
   const extra = [];
   if (r.stickiness_outcome) extra.push(`Stickiness: ${r.stickiness_outcome}`);
   if (r.profile) extra.push(`Profile: ${r.profile}`);
+  if (Array.isArray(r.lacking_metric_models) && r.lacking_metric_models.length) {
+    extra.push(`Sat out (no ${metricLabel(r.metric_used)} score): ${r.lacking_metric_models.join(', ')}`);
+  }
 
   return `
     <div class="insights-header">
@@ -218,7 +229,7 @@ function buildInsightsHtml(meta) {
     <div class="insights-grid">${cards}</div>
     ${extra.length ? `<div class="insights-subtle">${escapeHtml(extra.join(' · '))}</div>` : ''}
     ${table}
-    <div class="insights-attribution">Model scores: Artificial Analysis</div>
+    <div class="insights-attribution">Model scores: Artificial Analysis · LMArena ratings (CC BY 4.0)</div>
   `;
 }
 

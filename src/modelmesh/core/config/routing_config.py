@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 import yaml
 from pydantic import BaseModel, Field, field_validator
 
@@ -107,13 +107,19 @@ class SmartRoutingConfig(BaseModel):
     decision: DecisionConfig = Field(default_factory=DecisionConfig)
     rubric: RubricConfig = Field(default_factory=RubricConfig)
     need: NeedConfig = Field(default_factory=NeedConfig)
-    metric_by_task: Dict[str, str] = Field(
+    # Per task, metrics to rank on in order of preference: intelligence/coding/agentic
+    # (Artificial Analysis) or arena_<category> (LMArena). A plain string means
+    # "this metric, else intelligence".
+    metric_by_task: Dict[str, Union[str, List[str]]] = Field(
         default_factory=lambda: {
-            "coding": "coding",
-            "agentic_tool_use": "agentic",
-            "default": "intelligence",
+            "coding": ["arena_coding", "coding", "intelligence"],
+            "agentic_tool_use": ["agentic", "intelligence"],
+            "default": ["intelligence", "arena_overall"],
         }
     )
+    # The first preferred metric that scores at least this share of the scored pool is used;
+    # models lacking it sit out that turn.
+    min_metric_coverage: float = Field(default=0.75, ge=0.0, le=1.0)
     pool: PoolConfig = Field(default_factory=PoolConfig)
     # exclude: unscored models skip Smart routing. tier_default: estimate their score
     # from the scored pool (cheap/mid/premium -> 25th/50th/75th percentile).

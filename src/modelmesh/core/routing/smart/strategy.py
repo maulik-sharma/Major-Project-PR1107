@@ -69,7 +69,7 @@ class SmartClefStrategy(Strategy):
         needs_reasoning_noul = _noul(answers, "needs_reasoning")
 
         # 3. Resolve metric
-        metric = cfg.metric_by_task.get(task_choice, cfg.metric_by_task.get("default", "intelligence"))
+        metric = cfg.metric_by_task.get(task_choice, cfg.metric_by_task.get("default", ["intelligence"]))
 
         # 4. Compute quality need and bar
         effective_bias = bias_override
@@ -112,6 +112,7 @@ class SmartClefStrategy(Strategy):
             unscored_policy=cfg.unscored_policy,
             tokens_in_est=tokens_in_est,
             tokens_out_est=tokens_out_est,
+            min_coverage=cfg.min_metric_coverage,
         )
 
         # 8. Session stickiness (never on the first message of a conversation)
@@ -158,6 +159,7 @@ class SmartClefStrategy(Strategy):
             "chosen_score": select_meta["chosen_score"],
             "below_bar": select_meta["below_bar"],
             "admitted_model_ids": select_meta.get("admitted_model_ids", []),
+            "lacking_metric_models": select_meta.get("lacking_metric_models", []),
             "router_latency_ms": decision_latency_ms,
             # Free-tier decision providers report no price, so the router call is logged at $0.
             "router_cost_usd": 0.0,

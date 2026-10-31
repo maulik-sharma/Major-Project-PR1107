@@ -94,9 +94,30 @@ need:
   uncertainty_k: 0.15
   slack: 0.1
 metric_by_task:
-  coding: coding
-  agentic_tool_use: agentic
-  default: intelligence
+  coding:
+  - arena_coding
+  - coding
+  - intelligence
+  math_reasoning:
+  - arena_math
+  - intelligence
+  writing_creative:
+  - arena_creative_writing
+  - arena_overall
+  - intelligence
+  summarization_extraction:
+  - arena_instruction_following
+  - intelligence
+  agentic_tool_use:
+  - agentic
+  - intelligence
+  analysis_research:
+  - intelligence
+  - arena_hard_prompts
+  default:
+  - intelligence
+  - arena_overall
+min_metric_coverage: 0.75
 pool:
   include:
   - '*'

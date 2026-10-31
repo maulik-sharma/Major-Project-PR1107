@@ -41,6 +41,7 @@ def routing_metadata(decision: RoutingDecision, answered_by: Optional[Candidate]
         "need": f.get("need"),
         "bar": f.get("bar"),
         "metric_used": f.get("metric_used"),
+        "lacking_metric_models": list(f.get("lacking_metric_models") or []),
         "chosen_q": f.get("chosen_q"),
         "router_latency_ms": f.get("router_latency_ms"),
         "stickiness_outcome": f.get("stickiness_outcome"),

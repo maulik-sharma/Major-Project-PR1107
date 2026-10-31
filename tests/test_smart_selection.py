@@ -159,3 +159,56 @@ def test_difficulty_bias_and_slack_change_the_chosen_model() -> None:
     assert _route(difficulty=1.0, bias=-0.2) == "small"  # bar drops to 0
     assert _route(difficulty=2.0, bias=0.2) == "large"  # bar ~0.62 > medium's 0.5
     assert _route(difficulty=1.0, slack=0.3) == "small"  # wider slack admits the cheapest
+
+
+def arena(intel: Optional[float], **ratings: float) -> EffectiveScores:
+    return EffectiveScores(intelligence=intel, arena=dict(ratings), is_unscored=False, source="snapshot")
+
+
+CODING_PREFS = ["arena_coding", "coding", "intelligence"]
+
+
+def test_preferred_metric_used_when_it_covers_enough_of_the_pool() -> None:
+    cands = [cand("a", 5.0), cand("b", 3.0), cand("c", 1.0), cand("tiny", 0.0)]
+    eff = {
+        "a": arena(50, coding=1500), "b": arena(40, coding=1450),
+        "c": arena(30, coding=1400), "tiny": arena(60),  # high AA score but no arena rating
+    }
+    chosen, chain, meta = select(cands, eff, bar=0.9, metric=CODING_PREFS)
+    assert meta["metric_used"] == "arena_coding"
+    assert meta["lacking_metric_models"] == ["tiny"]
+    assert chosen.model_id == "a"
+    assert "tiny" not in {c.model_id for c in chain}
+
+
+def test_falls_through_to_next_metric_when_coverage_is_low() -> None:
+    cands = [cand("a", 5.0), cand("b", 3.0), cand("c", 1.0)]
+    eff = {"a": arena(50, coding=1500), "b": arena(40), "c": arena(30)}
+    _, _, meta = select(cands, eff, bar=0.0, metric=CODING_PREFS)
+    assert meta["metric_used"] == "intelligence"
+    assert meta["lacking_metric_models"] == []
+
+
+def test_widest_metric_wins_when_none_reaches_threshold() -> None:
+    cands = [cand(x, 1.0) for x in "abcd"]
+    eff = {"a": arena(None, coding=1), "b": arena(None, coding=2), "c": arena(9), "d": arena(None, overall=5)}
+    _, _, meta = select(cands, eff, bar=0.0, metric=["arena_coding", "intelligence", "arena_overall"], min_coverage=0.9)
+    assert meta["metric_used"] == "arena_coding"
+    assert meta["lacking_metric_models"] == ["c", "d"]
+
+
+def test_strategy_reads_metric_preferences_from_config() -> None:
+    cfg = SmartRoutingConfig()
+    cfg.metric_by_task = {"chat_general": ["arena_overall", "intelligence"], "default": ["intelligence"]}
+    cands = [cand("cheap", 0.0), cand("pricey", 9.0)]
+    for c, (intel, elo) in zip(cands, [(80, 1300), (20, 1500)]):
+        c.model_config.scores.manual.intelligence = intel
+        c.model_config.scores.manual.arena_text_elo = elo
+    request = ChatRequest(messages=[Message.from_text("user", "hi")])
+    features = {"smart_decision": {"answers": {
+        "task": {"choice": "chat_general"}, "difficulty": {"score": 4},
+        "precision": {"score": 3}, "larger_model_benefit": {"score": 3},
+    }, "source": "heuristic"}}
+    decision = SmartClefStrategy(config=cfg).rank(cands, request, features)
+    assert decision.request_features["metric_used"] == "arena_overall"
+    assert decision.chosen_candidate.model_id == "pricey"
