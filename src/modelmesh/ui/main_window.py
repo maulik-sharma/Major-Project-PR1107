@@ -35,6 +35,7 @@ from modelmesh.core.types import (
     Message,
     TextPart,
 )
+from modelmesh.ui.catalog_startup import CatalogStartupCheck
 from modelmesh.ui.chat_view import ChatView
 from modelmesh.ui.composer import ComposerWidget
 from modelmesh.ui.parameters_dialog import ParametersDialog
@@ -63,6 +64,7 @@ class MainWindow(QMainWindow):
         engine: ChatEngine,
         storage: Storage,
         parent: Optional[QWidget] = None,
+        check_catalogs: bool = False,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("ModelMesh - Intelligent LLM Router")
@@ -88,6 +90,10 @@ class MainWindow(QMainWindow):
         self.turns.cost_added.connect(self._on_cost_added)
         self.composer.attachment_error.connect(self.status_bar.showMessage)
         self._load_initial_data()
+        # Daily check of provider model lists (the app turns this on; tests stay offline).
+        self.catalog_check = CatalogStartupCheck(registry, self.status_bar, self._on_settings_updated, parent=self)
+        if check_catalogs:
+            self.catalog_check.schedule()
 
     def _init_ui(self) -> None:
         self._current_theme = str(get_app_settings().value("appearance/theme", "dark"))
@@ -425,6 +431,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: Any) -> None:
         """Stop and wait for background workers before the window goes away."""
         self.turns.shutdown()
+        self.catalog_check.wait()
         super().closeEvent(event)
 
     def _open_parameters_dialog(self) -> None:

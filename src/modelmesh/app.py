@@ -75,6 +75,7 @@ def main() -> None:
         router=router,
         engine=engine,
         storage=storage,
+        check_catalogs=True,
     )
     window.show()
 

@@ -98,6 +98,7 @@ class SettingsDialog(QDialog):
             getattr(self.routing_tab, "_test_worker", None),
             getattr(self.providers_tab, "_test_worker", None),
             getattr(self.providers_tab, "_fetch_worker", None),
+            getattr(self.models_tab, "_catalog_worker", None),
         ):
             if worker is not None and worker.isRunning():
                 worker.wait(15000)

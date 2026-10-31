@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
 from modelmesh.core.errors import RegistryError
 from modelmesh.core.registry import ModelRegistry
 from modelmesh.core.types import EndpointConfig, ModelConfig
+from modelmesh.ui.catalog_dialog import CatalogCheckWorker, CatalogReviewDialog
 
 
 class AddEndpointDialog(QDialog):
@@ -221,6 +222,7 @@ class ModelsTab(QWidget):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.registry = registry
+        self._catalog_worker: Optional[CatalogCheckWorker] = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -269,6 +271,13 @@ class ModelsTab(QWidget):
         btn_row.addWidget(toggle_btn)
         btn_row.addWidget(del_btn)
         btn_row.addStretch()
+        self.catalog_btn = QPushButton("Check Provider Models…")
+        self.catalog_btn.setToolTip(
+            "Compare these endpoints with each provider's live model list: new, removed or retired "
+            "models, and wrong limits or prices"
+        )
+        self.catalog_btn.clicked.connect(self._on_check_catalog)
+        btn_row.addWidget(self.catalog_btn)
         layout.addLayout(btn_row)
 
         self.refresh()
@@ -424,6 +433,25 @@ class ModelsTab(QWidget):
                 return
             self.registry.remove_model(data["model_id"])
         self._commit()
+
+    def _on_check_catalog(self) -> None:
+        if self._catalog_worker is not None and self._catalog_worker.isRunning():
+            return
+        self.catalog_btn.setEnabled(False)
+        self.catalog_btn.setText("Checking…")
+        self._catalog_worker = CatalogCheckWorker(self.registry, parent=self)
+        self._catalog_worker.finished_check.connect(self._on_catalog_checked)
+        self._catalog_worker.start()
+
+    def _on_catalog_checked(self, report: Any) -> None:
+        self.catalog_btn.setEnabled(True)
+        self.catalog_btn.setText("Check Provider Models…")
+        dialog = CatalogReviewDialog(self.registry, report, parent=self)
+        dialog.applied.connect(lambda summary: QMessageBox.information(self, "Models Updated", summary))
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.refresh()
+            self.config_changed.emit()
+        dialog.deleteLater()
 
     def _commit(self) -> None:
         """Validate and save providers.yaml, then refresh the view and notify listeners."""
