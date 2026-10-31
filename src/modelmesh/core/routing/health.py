@@ -1,4 +1,4 @@
-"""In-memory, per-endpoint health tracking: cooldowns for transient failures, blacklist for auth."""
+"""In-memory health tracking: per-endpoint cooldowns for transient failures, per-provider blacklist for auth."""
 
 from __future__ import annotations
 
@@ -16,8 +16,9 @@ class EndpointHealthTracker:
     Health is tracked per endpoint, never per model, so one provider's outage
     never hides the same model served by another provider.
 
-    - ``auth`` failures blacklist the endpoint until :meth:`clear_blacklist`
-      (called when settings/keys change).
+    - ``auth`` failures (bad key, or an account out of credits) blacklist the
+      endpoint, and its whole provider when known (every endpoint shares the
+      key and account), until :meth:`clear_blacklist` (called when settings/keys change).
     - ``rate_limit`` puts the endpoint in cooldown immediately.
     - Other failures (``network``, ``server``, ``unknown``) put it in cooldown
       once ``failure_threshold`` consecutive failures are reached.
@@ -30,6 +31,7 @@ class EndpointHealthTracker:
         self._consecutive_failures: Dict[str, int] = {}
         self._unhealthy_until: Dict[str, float] = {}
         self._blacklisted_endpoints: Dict[str, str] = {}  # endpoint_id -> reason
+        self._blacklisted_providers: Dict[str, str] = {}  # provider_id -> reason
         self._lock = threading.Lock()
 
     def record_failure(
@@ -37,6 +39,7 @@ class EndpointHealthTracker:
         endpoint_id: str,
         category: str = "unknown",
         reason: Optional[str] = None,
+        provider_id: Optional[str] = None,
     ) -> None:
         """Record a failed request against an endpoint, classified by error category."""
         if category in _REQUEST_CATEGORIES:
@@ -44,6 +47,8 @@ class EndpointHealthTracker:
         with self._lock:
             if category == "auth":
                 self._blacklisted_endpoints[endpoint_id] = reason or "Authentication failed"
+                if provider_id:
+                    self._blacklisted_providers[provider_id] = reason or "Authentication failed"
                 return
             count = self._consecutive_failures.get(endpoint_id, 0) + 1
             self._consecutive_failures[endpoint_id] = count
@@ -62,15 +67,19 @@ class EndpointHealthTracker:
         with self._lock:
             self._blacklisted_endpoints[endpoint_id] = reason or "Blacklisted for session"
 
-    def is_blacklisted(self, endpoint_id: str) -> bool:
-        """Return True if the endpoint is blacklisted for this session."""
+    def is_blacklisted(self, endpoint_id: str, provider_id: Optional[str] = None) -> bool:
+        """Return True if the endpoint, or its provider, is blacklisted for this session."""
         with self._lock:
-            return endpoint_id in self._blacklisted_endpoints
+            return endpoint_id in self._blacklisted_endpoints or (
+                provider_id is not None and provider_id in self._blacklisted_providers
+            )
 
-    def get_blacklist_reason(self, endpoint_id: str) -> Optional[str]:
-        """Return why an endpoint was blacklisted, or None."""
+    def get_blacklist_reason(self, endpoint_id: str, provider_id: Optional[str] = None) -> Optional[str]:
+        """Return why an endpoint (or its provider) was blacklisted, or None."""
         with self._lock:
-            return self._blacklisted_endpoints.get(endpoint_id)
+            if endpoint_id in self._blacklisted_endpoints:
+                return self._blacklisted_endpoints[endpoint_id]
+            return self._blacklisted_providers.get(provider_id) if provider_id else None
 
     def is_cooling_down(self, endpoint_id: str) -> bool:
         """Return True while an endpoint is inside its failure cooldown window."""
@@ -93,6 +102,7 @@ class EndpointHealthTracker:
         """Reset all blacklists, failure counts, and cooldowns."""
         with self._lock:
             self._blacklisted_endpoints.clear()
+            self._blacklisted_providers.clear()
             self._consecutive_failures.clear()
             self._unhealthy_until.clear()
 

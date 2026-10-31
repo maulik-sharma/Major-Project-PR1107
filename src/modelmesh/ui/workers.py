@@ -149,7 +149,9 @@ class ChatWorker(QThread):
 
                 elif event.type == StreamEventType.ERROR:
                     message, details, category = friendly_error(
-                        event.data.get("error", "Unknown error"), event.data.get("category", "unknown")
+                        event.data.get("error", "Unknown error"),
+                        event.data.get("category", "unknown"),
+                        event.data.get("kind"),
                     )
                     self.error_occurred.emit({"error": message, "details": details, "category": category})
 

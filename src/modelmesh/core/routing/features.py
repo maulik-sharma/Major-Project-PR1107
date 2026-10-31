@@ -96,8 +96,8 @@ def filter_eligible_candidates(
 
         # Check session blacklist (auth failures) and cooldown (transient failures)
         if health_tracker is not None:
-            if health_tracker.is_blacklisted(cand.endpoint_id):
-                reason = health_tracker.get_blacklist_reason(cand.endpoint_id) or "Authentication failed"
+            if health_tracker.is_blacklisted(cand.endpoint_id, cand.provider_id):
+                reason = health_tracker.get_blacklist_reason(cand.endpoint_id, cand.provider_id) or "Authentication failed"
                 rejections[cand.endpoint_id] = f"Endpoint is blacklisted for this session: {reason}"
                 continue
 

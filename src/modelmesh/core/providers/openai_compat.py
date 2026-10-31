@@ -18,6 +18,7 @@ from modelmesh.core.cost import estimate_request_tokens, estimate_tokens
 from modelmesh.core.errors import (
     AuthError,
     BadRequestError,
+    BillingError,
     ContextLengthError,
     NetworkError,
     ProviderError,
@@ -62,11 +63,14 @@ def _create_client(provider: ProviderConfig, http_client: Optional[Any] = None) 
         pool=10.0,
     )
     client = http_client or httpx.Client(timeout=timeout)
+    # No SDK-level retries: the engine fails over to the next endpoint instead,
+    # and silent retries tripled the wait on every failing hop.
     return OpenAI(
         api_key=api_key,
         base_url=base_url,
         http_client=client,
         default_headers=provider.extra_headers or None,
+        max_retries=0,
     )
 
 
@@ -139,6 +143,23 @@ def _convert_tools_to_openai(tools: List[ToolSpec]) -> List[Dict[str, Any]]:
     ]
 
 
+def _tool_call_key(tc_delta: Any, builders: Dict[Any, Dict[str, Any]]) -> Any:
+    """Which tool call a streamed fragment belongs to.
+
+    Most servers send ``index``. Some send each call whole with an ``id`` and
+    no index; filing those all under 0 glued parallel calls together. A
+    fragment with neither continues the most recent call.
+    """
+    if tc_delta.index is not None:
+        return tc_delta.index
+    if tc_delta.id:
+        for key, b in builders.items():
+            if b["id"] == tc_delta.id:
+                return key
+        return f"id:{tc_delta.id}"
+    return next(reversed(builders), 0) if builders else 0
+
+
 def map_openai_exception(exc: Exception, provider_id: str) -> ProviderError:
     """Map OpenAI SDK exceptions to normalized ProviderError instances."""
     msg = str(exc)
@@ -165,9 +186,9 @@ def map_openai_exception(exc: Exception, provider_id: str) -> ProviderError:
             raw_error=exc,
         )
 
-    # Detect credit exhaustion or insufficient quota
+    # Credit exhaustion is an account problem, not a transient rate limit.
     if "credit_balance_exhausted" in lower_msg or "insufficient_quota" in lower_msg or "no credits remaining" in lower_msg:
-        return RateLimitError(
+        return BillingError(
             message=msg,
             provider_id=provider_id,
             status_code=status_code or 429,
@@ -282,7 +303,7 @@ class OpenAICompatAdapter(ProviderAdapter):
                 # Tool call chunks
                 if delta.tool_calls:
                     for tc_delta in delta.tool_calls:
-                        idx = tc_delta.index if tc_delta.index is not None else 0
+                        idx = _tool_call_key(tc_delta, tool_call_builders)
                         if idx not in tool_call_builders:
                             tool_call_builders[idx] = {
                                 "id": tc_delta.id or f"call_{idx}",
@@ -300,9 +321,11 @@ class OpenAICompatAdapter(ProviderAdapter):
 
         except Exception as exc:
             raise map_openai_exception(exc, candidate.provider_id) from exc
+        finally:
+            client.close()
 
         # Emit accumulated tool calls
-        for idx in sorted(tool_call_builders.keys()):
+        for idx in tool_call_builders:  # arrival order
             tc_data = tool_call_builders[idx]
             args_str = tc_data["arguments"]
             try:
@@ -340,6 +363,8 @@ class OpenAICompatAdapter(ProviderAdapter):
             return [m.id for m in resp.data]
         except Exception as exc:
             raise map_openai_exception(exc, provider.id) from exc
+        finally:
+            client.close()
 
     def test_connection(self, provider: ProviderConfig) -> bool:
         """Perform a simple models list check to verify authentication and connectivity."""
@@ -349,3 +374,5 @@ class OpenAICompatAdapter(ProviderAdapter):
             return True
         except Exception as exc:
             raise map_openai_exception(exc, provider.id) from exc
+        finally:
+            client.close()

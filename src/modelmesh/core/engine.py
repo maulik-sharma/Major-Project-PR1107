@@ -11,6 +11,7 @@ from modelmesh.core.providers.base import get_adapter
 from modelmesh.core.registry import ModelRegistry
 from modelmesh.core.routing_log import record_turn, routing_metadata
 from modelmesh.core.skills import SkillLoader, get_load_skill_tool
+from modelmesh.core.streaming import iterate_cancellable
 from modelmesh.core.tools.registry import ToolExecutionResult, ToolRegistry
 from modelmesh.core.types import (
     Candidate,
@@ -47,10 +48,10 @@ class ChatEngine:
         return getattr(self.router, "health_tracker", None) if self.router is not None else None
 
     def _record_failure(self, cand: Candidate, category: str, reason: str) -> None:
-        """Report a failed attempt on an endpoint to the health tracker."""
+        """Report a failed attempt on an endpoint (and its provider) to the health tracker."""
         tracker = self._health_tracker()
         if tracker is not None:
-            tracker.record_failure(cand.endpoint_id, category=category, reason=reason)
+            tracker.record_failure(cand.endpoint_id, category=category, reason=reason, provider_id=cand.provider_id)
 
     def _last_routed_model(self, conversation_id: Optional[str]) -> Optional[str]:
         """Model that answered the previous turn of this conversation (for stickiness)."""
@@ -230,10 +231,13 @@ class ChatEngine:
 
                 try:
                     adapter = get_adapter(cand.protocol)
-                    stream_iter = adapter.stream_chat(
-                        request=current_request,
-                        candidate=cand,
-                        cancel_event=cancel_event,
+                    req_for_attempt = current_request
+                    # Read on a helper thread so Stop works even while the provider is stalled.
+                    stream_iter = iterate_cancellable(
+                        lambda: adapter.stream_chat(
+                            request=req_for_attempt, candidate=cand, cancel_event=cancel_event
+                        ),
+                        cancel_event,
                     )
 
                     for event in stream_iter:
@@ -271,6 +275,7 @@ class ChatEngine:
                             data={
                                 "error": str(exc),
                                 "category": exc.category,
+                                "kind": exc.kind,
                                 "candidate": cand,
                                 "partial_text": accumulated_turn_text,
                             },
@@ -280,6 +285,11 @@ class ChatEngine:
                     if exc.should_skip_model_siblings:
                         candidate_queue = [
                             c for c in candidate_queue if c.model_id != cand.model_id
+                        ]
+                    if exc.category == "auth":
+                        # Bad key or empty account: the provider's other endpoints fail the same way.
+                        candidate_queue = [
+                            c for c in candidate_queue if c.provider_id != cand.provider_id
                         ]
                     break
 
@@ -307,6 +317,9 @@ class ChatEngine:
                         )
                         return
                     break
+
+                if cancel_event and cancel_event.is_set():
+                    return  # stream ended because the user pressed Stop
 
                 # Accumulate usage tokens
                 if iter_usage:
@@ -416,6 +429,7 @@ class ChatEngine:
                 data={
                     "error": str(last_error or "All candidates failed"),
                     "category": last_error.category if last_error else "unknown",
+                    "kind": getattr(last_error, "kind", None),
                 },
             )
             return

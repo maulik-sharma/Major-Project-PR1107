@@ -52,6 +52,8 @@ _SECRET_ENV_NAME = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD)$", re.IGNORECASE)
 
 _FRIENDLY_MESSAGES = {
     "auth": "The provider rejected the API key. Check it in Settings → Providers.",
+    "billing": "The provider account is out of credits. Add credits, or use another provider; "
+               "its models are skipped until you change settings.",
     "rate_limit": "The provider is rate-limiting requests. Wait a moment, or pick another model.",
     "context_length": "This conversation is too long for the model. Start a new chat or pick a model with a larger context window.",
     "bad_request": "The provider rejected the request (it may not support a setting or attachment used here).",
@@ -62,11 +64,19 @@ _FRIENDLY_MESSAGES = {
 }
 
 
-def friendly_error(exc_or_text: Any, category: Optional[str] = None) -> Tuple[str, str, str]:
+def friendly_error(
+    exc_or_text: Any,
+    category: Optional[str] = None,
+    kind: Optional[str] = None,
+) -> Tuple[str, str, str]:
     """Turn an exception (or raw text) into (friendly message, scrubbed details, category).
 
-    UIs show the friendly message and keep the details behind a toggle (Rule 11).
+    ``kind`` refines a category (e.g. ``"billing"`` for an auth failure caused
+    by an empty account). UIs show the friendly message and keep the details
+    behind a toggle (Rule 11).
     """
+    if kind is None and isinstance(exc_or_text, ProviderError):
+        kind = exc_or_text.kind
     if category is None:
         if isinstance(exc_or_text, ProviderError):
             category = exc_or_text.category
@@ -75,7 +85,8 @@ def friendly_error(exc_or_text: Any, category: Optional[str] = None) -> Tuple[st
         else:
             category = "unknown"
     details = sanitize_error_message(str(exc_or_text))
-    return _FRIENDLY_MESSAGES.get(category, _FRIENDLY_MESSAGES["unknown"]), details, category
+    key = kind if kind in _FRIENDLY_MESSAGES else category
+    return _FRIENDLY_MESSAGES.get(key, _FRIENDLY_MESSAGES["unknown"]), details, category
 
 
 class ModelMeshError(Exception):
@@ -99,6 +110,7 @@ class ProviderError(ModelMeshError):
         should_skip_model_siblings: If True, indicates that the issue is with
             the model or request itself (like context length) rather than a specific
             provider outage, so other endpoints for the same model should be skipped.
+        kind: Optional refinement of the category, e.g. ``"billing"``.
     """
 
     def __init__(
@@ -110,9 +122,11 @@ class ProviderError(ModelMeshError):
         status_code: Optional[int] = None,
         raw_error: Optional[Any] = None,
         should_skip_model_siblings: Optional[bool] = None,
+        kind: Optional[str] = None,
     ) -> None:
         super().__init__(message)
         self.category = category
+        self.kind = kind
         self.retryable = retryable
         self.provider_id = provider_id
         self.status_code = status_code
@@ -148,6 +162,24 @@ class AuthError(ProviderError):
             raw_error=raw_error,
             should_skip_model_siblings=False,
         )
+
+
+class BillingError(AuthError):
+    """The account cannot pay for requests (out of credits, quota exhausted).
+
+    Categorised as ``auth``: like a bad key it affects every endpoint of the
+    provider and will not fix itself, so the provider is skipped for the session.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        provider_id: Optional[str] = None,
+        status_code: Optional[int] = None,
+        raw_error: Optional[Any] = None,
+    ) -> None:
+        super().__init__(message=message, provider_id=provider_id, status_code=status_code, raw_error=raw_error)
+        self.kind = "billing"
 
 
 class RateLimitError(ProviderError):

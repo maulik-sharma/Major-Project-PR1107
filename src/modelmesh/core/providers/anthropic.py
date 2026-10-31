@@ -13,6 +13,7 @@ from modelmesh.core.cost import estimate_request_tokens, estimate_tokens
 from modelmesh.core.errors import (
     AuthError,
     BadRequestError,
+    BillingError,
     ContextLengthError,
     NetworkError,
     ProviderError,
@@ -57,6 +58,7 @@ def _create_anthropic_client(
         "base_url": provider.base_url or "https://api.anthropic.com",
         "timeout": timeout,
         "default_headers": provider.extra_headers or None,
+        "max_retries": 0,  # the engine fails over instead of retrying silently
     }
     if http_client is not None:
         kwargs["http_client"] = http_client
@@ -155,9 +157,9 @@ def map_anthropic_exception(exc: Exception, provider_id: str) -> ProviderError:
             pass
 
     lower_msg = msg.lower()
-    # Credit balance / quota exhaustion -> RateLimitError (retryable / triggers failover)
+    # Credit balance / quota exhaustion: an account problem, so the provider is skipped
     if "credit balance is too low" in lower_msg or "insufficient_quota" in lower_msg or "out of credits" in lower_msg:
-        return RateLimitError(
+        return BillingError(
             message=msg,
             provider_id=provider_id,
             status_code=status_code or 400,
@@ -264,6 +266,8 @@ class AnthropicAdapter(ProviderAdapter):
 
         except Exception as exc:
             raise map_anthropic_exception(exc, candidate.provider_id) from exc
+        finally:
+            client.close()
 
         # Emit final usage
         if input_tokens == 0:
@@ -283,18 +287,14 @@ class AnthropicAdapter(ProviderAdapter):
         yield StreamEvent(type=StreamEventType.DONE, finish_reason="stop")
 
     def list_models(self, provider: ProviderConfig) -> List[str]:
-        """List standard Anthropic models."""
+        """List the models the account can use."""
         client = _create_anthropic_client(provider)
         try:
-            models_page = client.models.list()
-            return [m.id for m in models_page.data]
-        except Exception:
-            # Fallback list if models.list() is unavailable
-            return [
-                "claude-3-5-sonnet-20241022",
-                "claude-3-5-haiku-20241022",
-                "claude-3-opus-20240229",
-            ]
+            return [m.id for m in client.models.list(limit=1000).data]
+        except Exception as exc:
+            raise map_anthropic_exception(exc, provider.id) from exc
+        finally:
+            client.close()
 
     def test_connection(self, provider: ProviderConfig) -> bool:
         """Perform lightweight check."""
@@ -304,3 +304,5 @@ class AnthropicAdapter(ProviderAdapter):
             return True
         except Exception as exc:
             raise map_anthropic_exception(exc, provider.id) from exc
+        finally:
+            client.close()
