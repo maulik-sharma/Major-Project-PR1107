@@ -148,7 +148,7 @@ class ScoresTab(QWidget):
         header_layout.addStretch()
 
         self.snapshot_info_label = QLabel("Loading snapshot info...")
-        self.snapshot_info_label.setStyleSheet("color: var(--text-muted); font-size: 11.5px;")
+        self.snapshot_info_label.setObjectName("mutedLabel")
         header_layout.addWidget(self.snapshot_info_label)
 
         layout.addLayout(header_layout)
@@ -181,15 +181,11 @@ class ScoresTab(QWidget):
         # Footer with required attribution and warnings
         footer_layout = QHBoxLayout()
         self.attribution_label = QLabel("Model scores: Artificial Analysis")
-        self.attribution_label.setStyleSheet(
-            "color: var(--text-muted); font-weight: 500; font-size: 11.5px;"
-        )
+        self.attribution_label.setObjectName("mutedLabel")
         footer_layout.addWidget(self.attribution_label)
 
-        self.legend_label = QLabel("•  (M) Manual override  •  (I) Inherited from Intelligence")
-        self.legend_label.setStyleSheet(
-            "color: var(--text-muted); font-size: 11.5px;"
-        )
+        self.legend_label = QLabel("•  (M) Manual override  •  — Not benchmarked")
+        self.legend_label.setObjectName("mutedLabel")
         footer_layout.addWidget(self.legend_label)
 
         footer_layout.addStretch()

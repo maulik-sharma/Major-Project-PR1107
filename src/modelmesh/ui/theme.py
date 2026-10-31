@@ -888,6 +888,11 @@ QScrollBar::corner {
     background-color: rgba(16, 185, 129, 0.25);
 }
 
+#mutedLabel {
+    color: #71717a;
+    font-size: 11.5px;
+}
+
 #emptyPlaceholderLabel {
     color: #71717a;
     font-size: 13px;
@@ -1833,6 +1838,11 @@ QScrollBar::corner {
     background-color: #d1fae5;
 }
 
+#mutedLabel {
+    color: #64748b;
+    font-size: 11.5px;
+}
+
 #emptyPlaceholderLabel {
     color: #64748b;
     font-size: 13px;
@@ -1954,11 +1964,14 @@ def apply_theme(target: Optional[Any] = None, theme: str = "dark") -> None:
 
     app = QApplication.instance()
     if app:
+        if app.styleSheet() == qss:
+            return  # Already applied; re-parsing the whole stylesheet is expensive.
         app.setPalette(palette)
         app.setStyleSheet(qss)
         for top in app.topLevelWidgets():
-            if hasattr(top, "setStyleSheet") and top != app:
-                top.setStyleSheet(qss)
+            # One source of truth: the application stylesheet (older code copied it per window).
+            if hasattr(top, "styleSheet") and top.styleSheet() in (DARK_THEME_QSS, LIGHT_THEME_QSS):
+                top.setStyleSheet("")
             if hasattr(top, "style") and top.style():
                 top.style().unpolish(top)
                 top.style().polish(top)

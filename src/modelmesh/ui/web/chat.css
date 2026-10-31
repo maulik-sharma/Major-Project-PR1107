@@ -833,3 +833,26 @@ body.light-theme .tool-error-text {
   border: none;
   padding: 0;
 }
+
+/* Light-theme syntax colours (the vendored highlight.js theme is dark-only) */
+body.light-theme .hljs { color: #24292e; background: transparent; }
+body.light-theme .hljs-comment,
+body.light-theme .hljs-quote { color: #6a737d; font-style: italic; }
+body.light-theme .hljs-keyword,
+body.light-theme .hljs-selector-tag,
+body.light-theme .hljs-type { color: #d73a49; }
+body.light-theme .hljs-string,
+body.light-theme .hljs-regexp,
+body.light-theme .hljs-addition { color: #032f62; }
+body.light-theme .hljs-number,
+body.light-theme .hljs-literal,
+body.light-theme .hljs-variable,
+body.light-theme .hljs-template-variable,
+body.light-theme .hljs-attr { color: #005cc5; }
+body.light-theme .hljs-title,
+body.light-theme .hljs-section,
+body.light-theme .hljs-function { color: #6f42c1; }
+body.light-theme .hljs-built_in,
+body.light-theme .hljs-symbol,
+body.light-theme .hljs-meta { color: #e36209; }
+body.light-theme .hljs-deletion { color: #b31d28; }

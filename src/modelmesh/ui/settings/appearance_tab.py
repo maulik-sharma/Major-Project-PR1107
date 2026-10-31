@@ -6,7 +6,6 @@ from typing import Optional
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QApplication,
     QComboBox,
     QFormLayout,
     QLabel,
@@ -15,7 +14,6 @@ from PyQt6.QtWidgets import (
 )
 
 from modelmesh.ui.settings.tools_tab import get_app_settings
-from modelmesh.ui.theme import apply_theme
 
 
 class AppearanceTab(QWidget):
@@ -60,7 +58,5 @@ class AppearanceTab(QWidget):
     def _on_theme_changed(self, text: str) -> None:
         theme = "light" if "Light" in text else "dark"
         get_app_settings().setValue("appearance/theme", theme)
-        app = QApplication.instance()
-        if app:
-            apply_theme(app, theme)
+        # The main window applies it (once) when it receives theme_changed.
         self.theme_changed.emit(theme)

@@ -14,6 +14,7 @@ from PyQt6.QtGui import (
     QFont,
     QImage,
     QKeyEvent,
+    QPalette,
     QTextCharFormat,
     QTextCursor,
     QTextFormat,
@@ -242,8 +243,9 @@ class AutoExpandingTextEdit(QTextEdit):
 
             # Highlighted skill pill format
             token_format = QTextCharFormat()
-            token_format.setBackground(QColor("rgba(59, 130, 246, 0.22)"))
-            token_format.setForeground(QColor("#93c5fd"))
+            is_light = self.palette().color(QPalette.ColorRole.Base).lightness() > 128
+            token_format.setBackground(QColor(59, 130, 246, 56))
+            token_format.setForeground(QColor("#1d4ed8" if is_light else "#93c5fd"))
             token_format.setFontWeight(QFont.Weight.DemiBold)
             token_format.setProperty(SKILL_TOKEN_PROP, skill_name)
 
