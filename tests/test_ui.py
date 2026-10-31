@@ -917,3 +917,23 @@ def test_add_provider_presets_come_from_presets_yaml(qapp) -> None:
     assert not any("Bedrock" in n for n in names)  # no adapter for that protocol in this build
     dlg.preset_combo.setCurrentText("Groq")
     assert dlg.get_provider_config().base_url == "https://api.groq.com/openai/v1"
+
+
+def test_generation_settings_are_per_conversation(qapp, tmp_path: Path) -> None:
+    reg = create_test_registry()
+    storage = Storage(tmp_path / "test_gen.db")
+    router = Router(registry=reg)
+    win = MainWindow(registry=reg, router=router, engine=ChatEngine(registry=reg, router=router, storage=storage),
+                     storage=storage)
+    first = win.current_conversation_id
+    win.generation_settings = {"temperature": 0.1, "max_tokens": 256, "system_prompt": "Be terse."}
+    win.tools_btn.setChecked(False)
+    win._save_conversation_settings()
+
+    win._on_new_chat()
+    assert win.generation_settings["temperature"] == 0.7
+    assert win.tools_btn.isChecked() is True
+
+    win._on_conversation_selected(first)
+    assert win.generation_settings == {"temperature": 0.1, "max_tokens": 256, "system_prompt": "Be terse."}
+    assert win.tools_btn.isChecked() is False

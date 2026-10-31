@@ -49,6 +49,10 @@ from modelmesh.ui.transcript import display_parts, render_conversation, request_
 from modelmesh.ui.turn_controller import TurnController
 
 
+# Used for new conversations; each conversation then keeps its own copy.
+DEFAULT_GENERATION_SETTINGS: Dict[str, Any] = {"temperature": 0.7, "max_tokens": 4096, "system_prompt": ""}
+
+
 class MainWindow(QMainWindow):
     """Primary application window coordinating chat UI, routing, and background workers."""
 
@@ -74,11 +78,7 @@ class MainWindow(QMainWindow):
         self._conversation_loaded = False
         self.session_total_cost: float = 0.0
 
-        self.generation_settings: Dict[str, Any] = {
-            "temperature": 0.7,
-            "max_tokens": 4096,
-            "system_prompt": "",
-        }
+        self.generation_settings: Dict[str, Any] = dict(DEFAULT_GENERATION_SETTINGS)
 
         self._apply_router_settings()
         self._init_ui()
@@ -318,6 +318,7 @@ class MainWindow(QMainWindow):
         self.turns.detach()
         self.current_conversation_id = conv_id
         self._conversation_loaded = True
+        self._load_conversation_settings(conv_id)
         self.chat_view.clear()
         render_conversation(self.chat_view, self.storage.get_messages(conv_id))
         self.status_bar.showMessage("Conversation loaded.")
@@ -430,12 +431,34 @@ class MainWindow(QMainWindow):
         dlg = ParametersDialog(current_settings=self.generation_settings, parent=self)
         if dlg.exec() == ParametersDialog.DialogCode.Accepted:
             self.generation_settings = dlg.get_settings()
-            self.status_bar.showMessage("Updated generation parameters.")
+            self._save_conversation_settings()
+            self.status_bar.showMessage("Updated generation parameters for this conversation.")
 
     def _toggle_tools(self) -> None:
         active = self.tools_btn.isChecked()
         self.tools_btn.setText(f"Tools: {'On' if active else 'Off'}")
+        self._save_conversation_settings()
         self.status_bar.showMessage(f"Tools {'enabled' if active else 'disabled'}.")
+
+    def _load_conversation_settings(self, conv_id: str) -> None:
+        """Restore this conversation's generation parameters, system prompt and tools toggle."""
+        conv = self.storage.get_conversation(conv_id) or {}
+        stored = conv.get("settings") or {}
+        self.generation_settings = {**DEFAULT_GENERATION_SETTINGS, **(stored.get("generation") or {})}
+        self.generation_settings["system_prompt"] = conv.get("system_prompt") or ""
+        tools_on = bool(stored.get("tools_enabled", True))
+        self.tools_btn.setChecked(tools_on)
+        self.tools_btn.setText(f"Tools: {'On' if tools_on else 'Off'}")
+
+    def _save_conversation_settings(self) -> None:
+        if not self.current_conversation_id:
+            return
+        generation = {k: v for k, v in self.generation_settings.items() if k != "system_prompt"}
+        self.storage.update_conversation(
+            self.current_conversation_id,
+            system_prompt=self.generation_settings.get("system_prompt") or "",
+            settings={"generation": generation, "tools_enabled": self.tools_btn.isChecked()},
+        )
 
     def _on_skills_changed(self) -> None:
         """Update composer autocomplete when skills change."""
