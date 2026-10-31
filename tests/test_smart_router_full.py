@@ -174,7 +174,7 @@ def test_heuristic_provider_consistency():
 def test_decision_service_fail_open(tmp_path: Path):
     storage = Storage(tmp_path / "test_breaker.db")
     config = load_routing_config()
-    # Mock a service with invalid credentials to test fallback
+    # No credentials are available in tests (see conftest), so Clef must fail.
     service = DecisionService(config=config, storage=storage)
 
     req = ChatRequest(
@@ -182,7 +182,7 @@ def test_decision_service_fail_open(tmp_path: Path):
     )
     res = service.evaluate(req, provider_override="clef-flash")
     # Rule 17: Never fail turn; fall back to heuristic
-    assert res.source in ("heuristic_fallback", "heuristic", "mock")
+    assert res.source == "heuristic_fallback"
     assert "task" in res.answers
     assert res.answers["task"].get("choice") in ("chat_general", "writing", "factual_lookup")
 

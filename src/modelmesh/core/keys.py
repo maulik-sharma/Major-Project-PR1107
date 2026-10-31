@@ -40,7 +40,7 @@ def load_env(env_path: Optional[Path] = None) -> None:
     """
     path = env_path or get_default_env_path()
     if path.exists():
-        load_dotenv(dotenv_path=path, override=True)
+        load_dotenv(dotenv_path=path, override=False)
 
 
 def get_env_key(var_name: str) -> Optional[str]:
