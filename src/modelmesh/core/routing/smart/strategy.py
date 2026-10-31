@@ -9,6 +9,7 @@ from modelmesh.core.cost import estimate_request_tokens, expected_output_tokens
 from modelmesh.core.routing.base import Strategy, register_strategy
 from modelmesh.core.routing.smart.scoring import compute_bar, compute_need
 from modelmesh.core.routing.smart.selector import select_smart_candidate
+from modelmesh.core.routing.smart.stickiness import apply_stickiness
 from modelmesh.core.scores.snapshots import (
     EffectiveScores,
     ScoreSnapshot,
@@ -58,9 +59,13 @@ class SmartClefStrategy(Strategy):
         decision_provider_id = decision_data.get("provider_id")
         decision_latency_ms = decision_data.get("latency_ms", 0.0)
 
-        # 2. Extract answer dimensions
-        task_choice = answers.get("task", {}).get("choice", "chat_general") if isinstance(answers.get("task"), dict) else "chat_general"
-        needs_reasoning_noul = answers.get("needs_reasoning", {}).get("noul", 0.0) if isinstance(answers.get("needs_reasoning"), dict) else 0.0
+        # 2. Extract answer dimensions (unknown task labels count as general chat)
+        task_obj = answers.get("task")
+        task_choice = task_obj.get("choice", "chat_general") if isinstance(task_obj, dict) else "chat_general"
+        task_options = cfg.rubric.questions.get("task")
+        if task_options and task_options.options and task_choice not in task_options.options:
+            task_choice = "chat_general"
+        needs_reasoning_noul = _noul(answers, "needs_reasoning")
 
         # 3. Resolve metric
         metric = cfg.metric_by_task.get(task_choice, cfg.metric_by_task.get("default", "intelligence"))
@@ -106,26 +111,58 @@ class SmartClefStrategy(Strategy):
             tokens_out_est=tokens_out_est,
         )
 
-        reason = (
-            f"Smart routed to '{chosen.endpoint_id}' (need={need:.2f}, bar={bar:.2f}, "
-            f"q={select_meta['chosen_q']:.2f}, task={task_choice}, source={decision_source})"
-        )
+        # 8. Session stickiness (never on the first message of a conversation)
+        stickiness_outcome: Optional[str] = None
+        sticky_model_id: Optional[str] = kwargs.get("sticky_model_id")
+        if cfg.stickiness.enabled and select_meta["scores_available"]:
+            costs = {
+                c.endpoint_id: (c.price_in_per_mtok * tokens_in_est + c.price_out_per_mtok * tokens_out_est) / 1e6
+                for c in [chosen] + fallback_chain
+            }
+            chosen, fallback_chain, stickiness_outcome = apply_stickiness(
+                chosen=chosen,
+                fallback_chain=fallback_chain,
+                sticky_model_id=sticky_model_id,
+                q_scores=select_meta["q_scores"],
+                bar=bar,
+                task_changed=_noul(answers, "task_changed"),
+                task_changed_threshold=cfg.stickiness.task_changed_threshold,
+                stay_unless_cost_ratio=cfg.stickiness.stay_unless_cost_ratio,
+                cost_of=costs,
+            )
+
+        chosen_q = select_meta["q_scores"].get(chosen.model_id) if select_meta["scores_available"] else None
+        if select_meta["scores_available"]:
+            reason = (
+                f"Smart routed to '{chosen.endpoint_id}' (need={need:.2f}, bar={bar:.2f}, "
+                f"q={chosen_q:.2f}, task={task_choice}, source={decision_source})"
+            )
+        else:
+            reason = f"Smart routing had no quality scores; cheapest model '{chosen.endpoint_id}' chosen."
 
         all_meta = dict(features)
         all_meta.update({
             "smart_decision": decision_data,
             "decision_source": decision_source,
             "decision_provider_id": decision_provider_id,
+            "decision_error": decision_data.get("error"),
             "rubric_version": cfg.rubric.version,
             "need": need,
             "bar": bar,
-            "metric_used": metric,
+            "metric_used": select_meta["metric_used"],
             "task": task_choice,
-            "chosen_q": select_meta["chosen_q"],
+            "chosen_q": chosen_q,
             "chosen_score": select_meta["chosen_score"],
             "below_bar": select_meta["below_bar"],
+            "admitted_model_ids": select_meta.get("admitted_model_ids", []),
             "router_latency_ms": decision_latency_ms,
+            # Free-tier decision providers report no price, so the router call is logged at $0.
+            "router_cost_usd": 0.0,
+            "score_snapshot_id": active_snapshot.id if active_snapshot is not None else None,
+            "stickiness_outcome": stickiness_outcome,
             "estimated_cost_usd": select_meta["estimated_cost_usd"],
+            "notices": select_meta["notices"],
+            "profile": profile,
         })
 
         return RoutingDecision(
@@ -134,8 +171,14 @@ class SmartClefStrategy(Strategy):
             strategy_name=self.name,
             reason=reason,
             eligible_candidates=[
-                {"endpoint_id": c.endpoint_id, "model_id": c.model_id, "q": select_meta["q_scores"].get(c.model_id, 0.0)}
+                {"endpoint_id": c.endpoint_id, "model_id": c.model_id, "q": select_meta["q_scores"].get(c.model_id)}
                 for c in eligible_candidates
             ],
             request_features=all_meta,
         )
+
+
+def _noul(answers: Dict[str, Any], key: str) -> float:
+    """Return a yes/no probability answer, or 0.0 if absent."""
+    obj = answers.get(key)
+    return float(obj.get("noul", 0.0)) if isinstance(obj, dict) else 0.0

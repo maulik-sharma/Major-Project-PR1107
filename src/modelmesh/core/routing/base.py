@@ -10,6 +10,32 @@ from modelmesh.core.errors import RegistryError
 from modelmesh.core.types import Candidate, ChatRequest, RoutingDecision
 
 
+def sort_endpoints(
+    model_candidates: List[Candidate],
+    policy: str,
+    cost_of: Callable[[Candidate], float],
+) -> List[Candidate]:
+    """Order one model's endpoints by its endpoint policy (pure).
+
+    - ``cheapest``: estimated cost, then priority.
+    - ``fastest``: ``quirks.latency_ms`` if configured (unknown = last), then priority.
+      Observed latency from the routing log is not used yet.
+    - ``priority`` (default): priority, then price, then id.
+    """
+    if policy == "cheapest":
+        return sorted(model_candidates, key=lambda c: (cost_of(c), c.priority, c.endpoint_id))
+    if policy == "fastest":
+        def latency(c: Candidate) -> float:
+            raw = c.endpoint_config.quirks.get("latency_ms")
+            return float(raw) if isinstance(raw, (int, float)) else float("inf")
+
+        return sorted(model_candidates, key=lambda c: (latency(c), c.priority, c.endpoint_id))
+    return sorted(
+        model_candidates,
+        key=lambda c: (c.priority, c.price_in_per_mtok, c.price_out_per_mtok, c.endpoint_id),
+    )
+
+
 def order_endpoints_for_model(
     model_candidates: List[Candidate],
     policy: str,
@@ -25,27 +51,10 @@ def order_endpoints_for_model(
     Returns:
         Sorted list of Candidates.
     """
-    if not model_candidates:
-        return []
-
-    if policy == "cheapest":
-        return sorted(
-            model_candidates,
-            key=lambda c: (
-                estimate_request_cost(request, c.price_in_per_mtok, c.price_out_per_mtok),
-                c.priority,
-            ),
-        )
-
-    # Default 'priority' ordering: lower priority integer comes first
-    return sorted(
+    return sort_endpoints(
         model_candidates,
-        key=lambda c: (
-            c.priority,
-            c.price_in_per_mtok,
-            c.price_out_per_mtok,
-            c.endpoint_id,
-        ),
+        policy,
+        lambda c: estimate_request_cost(request, c.price_in_per_mtok, c.price_out_per_mtok),
     )
 
 

@@ -51,6 +51,15 @@ class ChatEngine:
         if tracker is not None:
             tracker.record_failure(cand.endpoint_id, category=category, reason=reason)
 
+    def _last_routed_model(self, conversation_id: Optional[str]) -> Optional[str]:
+        """Model that answered the previous turn of this conversation (for stickiness)."""
+        if not conversation_id or self.storage is None:
+            return None
+        try:
+            return self.storage.get_last_routed_model(conversation_id)
+        except Exception:
+            return None
+
     def run_turn(
         self,
         request: ChatRequest,
@@ -61,6 +70,7 @@ class ChatEngine:
         pinned_model_id: Optional[str] = None,
         pinned_endpoint_id: Optional[str] = None,
         seed: Optional[int] = None,
+        profile: Optional[str] = None,
     ) -> Iterator[StreamEvent]:
         """Execute a full conversation turn with routing, streaming, tool loop, and fallback.
 
@@ -141,6 +151,8 @@ class ChatEngine:
                 pinned_model_id=pinned_model_id,
                 pinned_endpoint_id=pinned_endpoint_id,
                 seed=seed,
+                profile=profile,
+                sticky_model_id=self._last_routed_model(conversation_id),
             )
             candidates_to_try = [decision.chosen_candidate] + list(decision.fallback_chain)
         else:
@@ -446,7 +458,7 @@ class ChatEngine:
                     score_snapshot_id=features.get("score_snapshot_id"),
                     chosen_q=features.get("chosen_q"),
                     chosen_score=features.get("chosen_score"),
-                    below_bar=bool(features.get("below_bar", False)),
+                    below_bar=_answered_below_bar(features, successful_candidate),
                     router_latency_ms=int(features.get("router_latency_ms", 0)),
                     router_cost_usd=float(features.get("router_cost_usd", 0.0)),
                     stickiness_outcome=features.get("stickiness_outcome"),
@@ -478,3 +490,11 @@ class ChatEngine:
                 "ttft_sec": round(time_to_first_token or 0.0, 3),
             },
         )
+
+
+def _answered_below_bar(features: Dict[str, Any], answered_by: Candidate) -> bool:
+    """True if Smart picked below the bar, or failover landed on a below-bar model (spec 4.5)."""
+    if features.get("below_bar"):
+        return True
+    admitted = features.get("admitted_model_ids") or []
+    return bool(admitted) and answered_by.model_id not in admitted

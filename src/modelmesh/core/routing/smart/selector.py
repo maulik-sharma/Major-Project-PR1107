@@ -1,4 +1,7 @@
-"""Pure selection logic for Smart routing (admitted set, cheapest pick, fallback chain)."""
+"""Pure selection logic for Smart routing (admitted set, cheapest pick, fallback chain).
+
+No I/O (Rule 18): plain data in, plain data out.
+"""
 
 from __future__ import annotations
 
@@ -6,9 +9,13 @@ import fnmatch
 from typing import Any, Dict, List, Optional, Tuple
 
 from modelmesh.core.errors import RoutingError
+from modelmesh.core.routing.base import sort_endpoints
 from modelmesh.core.routing.smart.scoring import normalize_scores_to_quality
 from modelmesh.core.scores.snapshots import EffectiveScores
-from modelmesh.core.types import Candidate, Tier
+from modelmesh.core.types import Candidate
+
+# Where an unscored model of each tier lands in the scored pool under `tier_default`.
+_TIER_QUANTILES = {"cheap": 0.25, "mid": 0.5, "premium": 0.75}
 
 
 def _matches_any_pattern(val: str, patterns: List[str]) -> bool:
@@ -20,6 +27,90 @@ def _estimate_cost(cand: Candidate, tokens_in: int, tokens_out: int) -> float:
         (cand.price_in_per_mtok * tokens_in)
         + (cand.price_out_per_mtok * tokens_out)
     ) / 1_000_000.0
+
+
+def _metric_value(eff: Optional[EffectiveScores], metric: str) -> Optional[float]:
+    if eff is None:
+        return None
+    return {"coding": eff.coding, "agentic": eff.agentic}.get(metric, eff.intelligence)
+
+
+def _quantile(values: List[float], q: float) -> float:
+    """Linear-interpolated quantile of a non-empty list."""
+    ordered = sorted(values)
+    pos = q * (len(ordered) - 1)
+    lo = int(pos)
+    hi = min(lo + 1, len(ordered) - 1)
+    return ordered[lo] + (ordered[hi] - ordered[lo]) * (pos - lo)
+
+
+def filter_pool(
+    candidates: List[Candidate],
+    task: str,
+    pool_include: List[str],
+    pool_exclude: List[str],
+) -> Tuple[List[Candidate], bool]:
+    """Apply routable, admitted_tasks, and include/exclude rules.
+
+    Returns (pool, include_ignored). An include list that matches nothing is ignored.
+    """
+    base: List[Candidate] = []
+    for c in candidates:
+        routing = c.model_config.routing
+        if not routing.routable:
+            continue
+        if "all" not in routing.admitted_tasks and task not in routing.admitted_tasks:
+            continue
+        if _matches_any_pattern(c.model_id, pool_exclude) or _matches_any_pattern(c.endpoint_id, pool_exclude):
+            continue
+        base.append(c)
+
+    included = [
+        c for c in base
+        if _matches_any_pattern(c.model_id, pool_include) or _matches_any_pattern(c.endpoint_id, pool_include)
+    ]
+    if included:
+        return included, False
+    return base, bool(base)
+
+
+def resolve_pool_scores(
+    pool: List[Candidate],
+    effective_scores: Dict[str, EffectiveScores],
+    metric: str,
+    unscored_policy: str,
+) -> Tuple[Dict[str, float], str, List[str]]:
+    """Score each model in the pool on one scale.
+
+    The task metric (coding/agentic) is used only if every scored model has it;
+    otherwise the whole pool is scored on intelligence, so real and missing
+    sub-indices are never mixed.
+
+    Returns (raw_scores by model_id, metric_used, estimated model_ids).
+    """
+    model_ids = list(dict.fromkeys(c.model_id for c in pool))
+    scored_any = [m for m in model_ids if (effective_scores.get(m) and not effective_scores[m].is_unscored)]
+
+    metric_used = metric
+    if metric != "intelligence":
+        if not scored_any or any(_metric_value(effective_scores.get(m), metric) is None for m in scored_any):
+            metric_used = "intelligence"
+
+    raw: Dict[str, float] = {}
+    for m in model_ids:
+        val = _metric_value(effective_scores.get(m), metric_used)
+        if val is not None:
+            raw[m] = val
+
+    estimated: List[str] = []
+    if unscored_policy == "tier_default" and raw:
+        values = list(raw.values())
+        tiers = {c.model_id: c.tier for c in pool}
+        for m in model_ids:
+            if m not in raw:
+                raw[m] = _quantile(values, _TIER_QUANTILES.get(tiers.get(m, "mid"), 0.5))
+                estimated.append(m)
+    return raw, metric_used, estimated
 
 
 def select_smart_candidate(
@@ -46,140 +137,102 @@ def select_smart_candidate(
 
     inc_patterns = pool_include or ["*"]
     exc_patterns = pool_exclude or []
-
-    # 1. Filter by routable flag, admitted tasks, and pool include/exclude
-    pool_eligible: List[Candidate] = []
-    has_any_include_match = False
-
-    for c in candidates:
-        mcfg = c.model_config
-        # Check routable
-        if not mcfg.routing.routable:
-            continue
-        # Check admitted tasks
-        admitted = mcfg.routing.admitted_tasks
-        if "all" not in admitted and task not in admitted:
-            continue
-        # Check exclusion
-        if _matches_any_pattern(c.model_id, exc_patterns) or _matches_any_pattern(c.endpoint_id, exc_patterns):
-            continue
-        # Check inclusion
-        matches_inc = _matches_any_pattern(c.model_id, inc_patterns) or _matches_any_pattern(c.endpoint_id, inc_patterns)
-        if matches_inc:
-            has_any_include_match = True
-            pool_eligible.append(c)
-
-    # If include list matched nothing, ignore include list (Part 4.7)
-    if not has_any_include_match:
-        for c in candidates:
-            mcfg = c.model_config
-            if not mcfg.routing.routable:
-                continue
-            admitted = mcfg.routing.admitted_tasks
-            if "all" not in admitted and task not in admitted:
-                continue
-            if _matches_any_pattern(c.model_id, exc_patterns) or _matches_any_pattern(c.endpoint_id, exc_patterns):
-                continue
-            pool_eligible.append(c)
-
-    if not pool_eligible:
+    pool, include_ignored = filter_pool(candidates, task, inc_patterns, exc_patterns)
+    if not pool:
         raise RoutingError(
-            f"Candidate pool is empty after applying pool filters (include: {inc_patterns}, exclude: {exc_patterns})."
+            f"Smart routing pool is empty after routable/admitted_tasks filters and "
+            f"pool.exclude {exc_patterns} in routing.yaml."
         )
 
-    # 2. Score resolution and unscored handling
-    scored_candidates: List[Candidate] = []
-    raw_scores: Dict[str, float] = {}
+    def cost(c: Candidate) -> float:
+        return _estimate_cost(c, tokens_in_est, tokens_out_est)
 
-    tier_default_scores = {"cheap": 20.0, "mid": 50.0, "premium": 80.0}
+    notices: List[str] = []
+    if include_ignored:
+        notices.append(f"pool.include {inc_patterns} matched no eligible model and was ignored.")
 
-    for c in pool_eligible:
-        eff = effective_scores.get(c.model_id)
-        val: Optional[float] = None
-        if eff and not eff.is_unscored:
-            if metric == "coding" and eff.coding is not None:
-                val = eff.coding
-            elif metric == "agentic" and eff.agentic is not None:
-                val = eff.agentic
-            elif eff.intelligence is not None:
-                val = eff.intelligence
+    raw_scores, metric_used, estimated = resolve_pool_scores(pool, effective_scores, metric, unscored_policy)
+    if metric_used != metric:
+        notices.append(f"Not every candidate has a '{metric}' score; ranked on intelligence instead.")
 
-        if val is None:
-            if unscored_policy == "tier_default":
-                val = tier_default_scores.get(c.tier, 40.0)
-                raw_scores[c.model_id] = val
-                scored_candidates.append(c)
-            # else exclude unscored
-        else:
-            raw_scores[c.model_id] = val
-            scored_candidates.append(c)
+    scored = [c for c in pool if c.model_id in raw_scores]
+    unscored_ids = sorted({c.model_id for c in pool} - set(raw_scores))
 
-    # Fallback if no models scored: use tier-based default scores so that the
-    # quality bar can still differentiate cheap vs mid vs premium models.
-    if not scored_candidates:
-        scored_candidates = list(pool_eligible)
-        raw_scores = {
-            c.model_id: tier_default_scores.get(c.tier, 40.0)
-            for c in pool_eligible
+    if not scored:
+        # Spec 4.7: no scored model -> cheapest-first with a visible notice.
+        notices.append("No candidate has a quality score; picked the cheapest model instead.")
+        ordered = sorted(pool, key=lambda c: (cost(c), c.priority, c.endpoint_id))
+        chosen = ordered[0]
+        return chosen, ordered[1:], {
+            "chosen_q": None,
+            "chosen_score": None,
+            "need": need,
+            "bar": bar,
+            "metric_used": None,
+            "below_bar": False,
+            "estimated_cost_usd": cost(chosen),
+            "q_scores": {},
+            "admitted_count": 0,
+            "pool_count": len(pool),
+            "scores_available": False,
+            "unscored_models": unscored_ids,
+            "estimated_score_models": [],
+            "notices": notices,
         }
 
-    # 3. Min-max normalize quality q in [0.0, 1.0]
     q_map = normalize_scores_to_quality(raw_scores)
 
-    # 4. Filter by reasoning preference
-    admitted_candidates = [c for c in scored_candidates if q_map.get(c.model_id, 0.0) >= bar]
-    below_bar_candidates = [c for c in scored_candidates if q_map.get(c.model_id, 0.0) < bar]
+    admitted = [c for c in scored if q_map[c.model_id] >= bar]
+    below = [c for c in scored if q_map[c.model_id] < bar]
 
-    # If reasoning is requested and any admitted candidate supports reasoning
+    # Soft reasoning preference (spec 4.2)
     if needs_reasoning >= 0.5:
-        reasoning_admitted = [
-            c for c in admitted_candidates if "reasoning" in c.effective_capabilities
-        ]
-        if reasoning_admitted:
-            admitted_candidates = reasoning_admitted
+        reasoning = [c for c in admitted if "reasoning" in c.effective_capabilities]
+        if reasoning:
+            below = below + [c for c in admitted if c not in reasoning]
+            admitted = reasoning
 
-    # If no candidate cleared the bar, admit the highest quality candidates
-    below_bar = False
-    if not admitted_candidates:
-        below_bar = True
-        max_q = max(q_map.values()) if q_map else 1.0
-        admitted_candidates = [c for c in scored_candidates if q_map.get(c.model_id, 0.0) >= max_q - 0.01]
-        below_bar_candidates = [c for c in scored_candidates if c not in admitted_candidates]
+    # The top model always has q = 1, so this only triggers with a negative slack.
+    below_bar = not admitted
+    if below_bar:
+        top_q = max(q_map.values())
+        admitted = [c for c in scored if q_map[c.model_id] >= top_q]
+        below = [c for c in scored if c not in admitted]
 
-    # 5. Pick cheapest in admitted set
-    def rank_key(cand: Candidate) -> tuple[float, int, float, str]:
-        cost = _estimate_cost(cand, tokens_in_est, tokens_out_est)
-        q = q_map.get(cand.model_id, 0.0)
-        return (cost, cand.priority, -q, cand.endpoint_id)
+    # Cheapest first; ties (e.g. several $0 models) break by higher q (spec 4.4).
+    admitted.sort(key=lambda c: (cost(c), -q_map[c.model_id], c.priority, c.endpoint_id))
+    below.sort(key=lambda c: (-q_map[c.model_id], cost(c), c.endpoint_id))
 
-    admitted_candidates.sort(key=rank_key)
-    below_bar_candidates.sort(key=lambda c: (-q_map.get(c.model_id, 0.0), _estimate_cost(c, tokens_in_est, tokens_out_est)))
+    chosen = admitted[0]
+    siblings = sort_endpoints(
+        [c for c in pool if c.model_id == chosen.model_id and c.endpoint_id != chosen.endpoint_id],
+        chosen.model_config.endpoint_policy,
+        cost,
+    )
+    fallback_chain = (
+        siblings
+        + [c for c in admitted if c.model_id != chosen.model_id]
+        + [c for c in below if c.model_id != chosen.model_id]
+    )
 
-    chosen = admitted_candidates[0]
-
-    # 6. Fallback chain:
-    # 1. Other endpoints of chosen model
-    # 2. Other admitted candidates
-    # 3. Below-bar candidates (strongest first)
-    same_model_fallbacks = [
-        c for c in candidates if c.model_id == chosen.model_id and c.endpoint_id != chosen.endpoint_id and c in pool_eligible
-    ]
-    other_admitted_fallbacks = [c for c in admitted_candidates if c.model_id != chosen.model_id]
-    other_below_bar_fallbacks = [c for c in below_bar_candidates if c.model_id != chosen.model_id]
-
-    fallback_chain = same_model_fallbacks + other_admitted_fallbacks + other_below_bar_fallbacks
+    if estimated:
+        notices.append(f"Estimated scores from tier for unscored models: {', '.join(sorted(estimated))}.")
 
     metadata: Dict[str, Any] = {
-        "chosen_q": q_map.get(chosen.model_id, 1.0),
-        "chosen_score": raw_scores.get(chosen.model_id, 0.0),
+        "chosen_q": q_map[chosen.model_id],
+        "chosen_score": raw_scores[chosen.model_id],
         "need": need,
         "bar": bar,
-        "metric_used": metric,
+        "metric_used": metric_used,
         "below_bar": below_bar,
-        "estimated_cost_usd": _estimate_cost(chosen, tokens_in_est, tokens_out_est),
+        "estimated_cost_usd": cost(chosen),
         "q_scores": q_map,
-        "admitted_count": len(admitted_candidates),
-        "pool_count": len(pool_eligible),
+        "admitted_count": len(admitted),
+        "admitted_model_ids": sorted({c.model_id for c in admitted}),
+        "pool_count": len(pool),
+        "scores_available": True,
+        "unscored_models": unscored_ids,
+        "estimated_score_models": sorted(estimated),
+        "notices": notices,
     }
-
     return chosen, fallback_chain, metadata

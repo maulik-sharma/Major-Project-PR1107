@@ -79,8 +79,6 @@ class EffectiveScores:
     is_manual: bool = False
     is_unscored: bool = True
     aa_slug: Optional[str] = None
-    is_coding_inherited: bool = False
-    is_agentic_inherited: bool = False
 
 
 def resolve_effective_scores(
@@ -92,8 +90,8 @@ def resolve_effective_scores(
     Priority:
     1. Manual overrides in model.scores.manual
     2. Linked record in score snapshot via model.scores.aa_slug
-    3. Inheritance fallback (e.g. coding/agentic fallback to intelligence if unbenchmarked)
-    4. Unscored
+    3. Unscored (None). A missing sub-index is never filled from another index:
+       the selector decides which single metric to rank a whole pool on.
     """
     manual = model.scores.manual
     has_any_manual = (
@@ -124,19 +122,6 @@ def resolve_effective_scores(
         if agent is None and evals.get("artificial_analysis_agentic_index") is not None:
             agent = float(evals["artificial_analysis_agentic_index"])
 
-    is_coding_inherited = False
-    is_agentic_inherited = False
-
-    # Fallback / inheritance: when specific sub-indexes (coding / agentic) are not
-    # separately evaluated by Artificial Analysis, inherit the overall intelligence score.
-    if code is None and intel is not None:
-        code = intel
-        is_coding_inherited = True
-
-    if agent is None and intel is not None:
-        agent = intel
-        is_agentic_inherited = True
-
     is_unscored = (intel is None and code is None and agent is None)
     if is_unscored:
         source = "unscored"
@@ -156,8 +141,6 @@ def resolve_effective_scores(
         is_manual=has_any_manual,
         is_unscored=is_unscored,
         aa_slug=aa_slug,
-        is_coding_inherited=is_coding_inherited,
-        is_agentic_inherited=is_agentic_inherited,
     )
 
 

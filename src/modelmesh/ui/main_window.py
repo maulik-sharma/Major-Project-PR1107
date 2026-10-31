@@ -446,6 +446,7 @@ class MainWindow(QMainWindow):
             pinned_model_id=pinned_model_id,
             pinned_endpoint_id=pinned_endpoint_id,
             conversation_id=conv_id,
+            profile=str(get_app_settings().value("router/profile", "")) or None,
             parent=self,
         )
 

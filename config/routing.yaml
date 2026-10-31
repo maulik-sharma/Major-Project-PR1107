@@ -102,7 +102,7 @@ pool:
   - '*'
   exclude:
   - mock-*
-unscored_policy: tier_default
+unscored_policy: exclude
 stickiness:
   enabled: false
   task_changed_threshold: 0.6

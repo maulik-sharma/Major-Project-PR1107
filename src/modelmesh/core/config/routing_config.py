@@ -106,7 +106,9 @@ class SmartRoutingConfig(BaseModel):
         }
     )
     pool: PoolConfig = Field(default_factory=PoolConfig)
-    unscored_policy: Literal["exclude", "tier_default"] = "tier_default"
+    # exclude: unscored models skip Smart routing. tier_default: estimate their score
+    # from the scored pool (cheap/mid/premium -> 25th/50th/75th percentile).
+    unscored_policy: Literal["exclude", "tier_default"] = "exclude"
     stickiness: StickinessConfig = Field(default_factory=StickinessConfig)
     profiles: Dict[str, ProfileConfig] = Field(
         default_factory=lambda: {

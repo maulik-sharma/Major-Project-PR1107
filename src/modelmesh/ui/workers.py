@@ -42,11 +42,13 @@ class ChatWorker(QThread):
         pinned_model_id: Optional[str] = None,
         pinned_endpoint_id: Optional[str] = None,
         conversation_id: Optional[str] = None,
+        profile: Optional[str] = None,
         parent: Optional[Any] = None,
     ) -> None:
         super().__init__(parent)
         self.engine = engine
         self.request = request
+        self.profile = profile
         self.strategy_name = strategy_name
         self.pinned_model_id = pinned_model_id
         self.pinned_endpoint_id = pinned_endpoint_id
@@ -72,6 +74,7 @@ class ChatWorker(QThread):
                 conversation_id=self.conversation_id,
                 pinned_model_id=self.pinned_model_id,
                 pinned_endpoint_id=self.pinned_endpoint_id,
+                profile=self.profile,
             )
 
             for event in stream_iter:

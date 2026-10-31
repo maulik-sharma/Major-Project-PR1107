@@ -78,8 +78,8 @@ def test_resolve_effective_scores_priority() -> None:
     assert eff3.source == "unscored"
 
 
-def test_resolve_effective_scores_inheritance() -> None:
-    """Verify models with null coding/agentic indices properly inherit intelligence score."""
+def test_resolve_effective_scores_missing_sub_indices() -> None:
+    """Missing coding/agentic indices stay missing; manual overrides can fill them."""
     models_data = [
         {
             "slug": "flagship-general",
@@ -96,7 +96,7 @@ def test_resolve_effective_scores_inheritance() -> None:
         index_version="4.3",
     )
 
-    # 1. Model with null coding/agentic from snapshot inherits intelligence
+    # 1. Null coding/agentic in the snapshot stay None (never copied from intelligence)
     m1 = ModelConfig(
         id="flagship-general",
         display_name="Flagship General",
@@ -105,13 +105,11 @@ def test_resolve_effective_scores_inheritance() -> None:
     eff1 = resolve_effective_scores(m1, snapshot)
     assert eff1.is_unscored is False
     assert eff1.intelligence == 57.6
-    assert eff1.coding == 57.6
-    assert eff1.agentic == 57.6
-    assert eff1.is_coding_inherited is True
-    assert eff1.is_agentic_inherited is True
+    assert eff1.coding is None
+    assert eff1.agentic is None
     assert eff1.source == "snapshot"
 
-    # 2. Model with manual coding override overrides inheritance
+    # 2. Manual coding override fills the missing sub-index
     m2 = ModelConfig(
         id="flagship-general-custom",
         display_name="Flagship General Custom",
@@ -122,9 +120,7 @@ def test_resolve_effective_scores_inheritance() -> None:
     )
     eff2 = resolve_effective_scores(m2, snapshot)
     assert eff2.coding == 90.0
-    assert eff2.is_coding_inherited is False
-    assert eff2.agentic == 57.6
-    assert eff2.is_agentic_inherited is True
+    assert eff2.agentic is None
     assert eff2.source == "manual"
 
 

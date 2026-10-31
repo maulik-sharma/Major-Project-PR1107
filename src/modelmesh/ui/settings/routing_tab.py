@@ -137,6 +137,11 @@ class RoutingTab(QWidget):
         bias_row.addWidget(self.slack_spin)
         smart_form.addRow("Bias & Slack:", bias_row)
 
+        self.profile_combo = QComboBox()
+        self.profile_combo.setToolTip("A profile replaces the default bias with its own (from routing.yaml).")
+        self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
+        smart_form.addRow("Quality Profile:", self.profile_combo)
+
         layout.addWidget(smart_group)
 
         # 3. Candidate Pool & Policy Box
@@ -145,7 +150,7 @@ class RoutingTab(QWidget):
 
         self.unscored_combo = QComboBox()
         self.unscored_combo.addItem("Exclude from Smart routing (default)", "exclude")
-        self.unscored_combo.addItem("Assign tier default scores (cheap/mid/premium)", "tier_default")
+        self.unscored_combo.addItem("Estimate from tier (percentile of scored models)", "tier_default")
         self.unscored_combo.currentIndexChanged.connect(self._on_unscored_policy_changed)
         pool_form.addRow("Unscored Models:", self.unscored_combo)
 
@@ -191,6 +196,13 @@ class RoutingTab(QWidget):
 
             self.privacy_check.setChecked(self.routing_config.decision.send_prompt_text)
 
+            self.profile_combo.clear()
+            self.profile_combo.addItem("None (use default bias)", "")
+            for name, prof in self.routing_config.profiles.items():
+                self.profile_combo.addItem(f"{name.title()} (bias {prof.bias:+.2f})", name)
+            idx_prof = self.profile_combo.findData(str(settings.value("router/profile", "")))
+            self.profile_combo.setCurrentIndex(max(0, idx_prof))
+
             # Need
             self.diff_weight_spin.setValue(self.routing_config.need.weights.difficulty)
             self.prec_weight_spin.setValue(self.routing_config.need.weights.precision)
@@ -216,6 +228,7 @@ class RoutingTab(QWidget):
             self.cooldown_sec,
             self.decision_provider_combo,
             self.privacy_check,
+            self.profile_combo,
             self.diff_weight_spin,
             self.prec_weight_spin,
             self.benefit_weight_spin,
@@ -245,6 +258,10 @@ class RoutingTab(QWidget):
         prov = self.decision_provider_combo.currentData() or self.routing_config.decision.active
         self.routing_config.decision.active = prov
         save_routing_config(self.routing_config)
+        self.config_changed.emit()
+
+    def _on_profile_changed(self) -> None:
+        get_app_settings().setValue("router/profile", self.profile_combo.currentData() or "")
         self.config_changed.emit()
 
     def _on_privacy_toggled(self, checked: bool) -> None:

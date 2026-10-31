@@ -553,6 +553,17 @@ class Storage:
                 conn.commit()
         return log_id
 
+    def get_last_routed_model(self, conversation_id: str) -> Optional[str]:
+        """Return the model that answered the most recent logged turn of a conversation."""
+        with self._lock:
+            with self._get_connection() as conn:
+                row = conn.execute(
+                    "SELECT chosen_model_id FROM routing_log WHERE conversation_id = ? "
+                    "ORDER BY created_at DESC LIMIT 1",
+                    (conversation_id,),
+                ).fetchone()
+        return row[0] if row else None
+
     def get_routing_logs(self, limit: int = 100) -> List[Dict[str, Any]]:
         with self._lock:
             with self._get_connection() as conn:

@@ -249,15 +249,12 @@ class ScoresTab(QWidget):
                 if m.scores.manual.coding is not None:
                     code_val = f"{eff.coding:.1f} (M)"
                     code_tip = "Manual override configured in providers.yaml"
-                elif eff.is_coding_inherited:
-                    code_val = f"{eff.coding:.1f} (I)"
-                    code_tip = "Inherited from Intelligence Index (not separately benchmarked by Artificial Analysis)"
                 else:
                     code_val = f"{eff.coding:.1f}"
                     code_tip = "Artificial Analysis Coding Index (SWE-bench / HumanEval composite)"
             else:
                 code_val = "—"
-                code_tip = "Unscored"
+                code_tip = "Not benchmarked; Smart ranks coding tasks on intelligence when any model lacks this"
             code_item = QTableWidgetItem(code_val)
             code_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             code_item.setToolTip(code_tip)
@@ -268,15 +265,12 @@ class ScoresTab(QWidget):
                 if m.scores.manual.agentic is not None:
                     agent_val = f"{eff.agentic:.1f} (M)"
                     agent_tip = "Manual override configured in providers.yaml"
-                elif eff.is_agentic_inherited:
-                    agent_val = f"{eff.agentic:.1f} (I)"
-                    agent_tip = "Inherited from Intelligence Index (not separately benchmarked by Artificial Analysis)"
                 else:
                     agent_val = f"{eff.agentic:.1f}"
                     agent_tip = "Artificial Analysis Agentic Tool-Use Index"
             else:
                 agent_val = "—"
-                agent_tip = "Unscored"
+                agent_tip = "Not benchmarked; Smart ranks agentic tasks on intelligence when any model lacks this"
             agent_item = QTableWidgetItem(agent_val)
             agent_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             agent_item.setToolTip(agent_tip)
