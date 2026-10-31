@@ -376,6 +376,13 @@ class Storage:
                 conn.execute("UPDATE conversations SET updated_at = ? WHERE id = ?", (time.time(), conversation_id))
                 conn.commit()
 
+    def delete_message(self, message_id: str) -> None:
+        """Delete one message (used when a reply is regenerated)."""
+        with self._lock:
+            with self._get_connection() as conn:
+                conn.execute("DELETE FROM messages WHERE id = ?", (message_id,))
+                conn.commit()
+
     def get_messages(self, conversation_id: str) -> List[Message]:
         with self._lock:
             with self._get_connection() as conn:

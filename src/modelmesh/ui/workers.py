@@ -254,3 +254,23 @@ class DecisionTestWorker(QThread):
         except Exception as exc:
             self.error_occurred.emit(str(exc))
 
+
+
+class AttachmentWorker(QThread):
+    """Reads attached files (images, text, PDFs) off the UI thread."""
+
+    attachment_ready = pyqtSignal(object)  # modelmesh.core.attachments.Attachment
+    attachment_failed = pyqtSignal(str, str)  # file name, message
+
+    def __init__(self, paths: List[Any], parent: Optional[Any] = None) -> None:
+        super().__init__(parent)
+        self.paths = list(paths)
+
+    def run(self) -> None:
+        from modelmesh.core.attachments import load_attachment
+
+        for path in self.paths:
+            try:
+                self.attachment_ready.emit(load_attachment(path))
+            except Exception as exc:
+                self.attachment_failed.emit(getattr(path, "name", str(path)), str(exc))

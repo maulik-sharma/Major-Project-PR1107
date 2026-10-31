@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -27,7 +26,7 @@ from PyQt6.QtWidgets import (
 )
 
 from modelmesh.core.engine import ChatEngine
-from modelmesh.core.formatting import extract_reasoning_and_content
+from modelmesh.core.attachments import Attachment
 from modelmesh.core.registry import ModelRegistry
 from modelmesh.core.routing.router import Router
 from modelmesh.core.storage import Storage
@@ -47,7 +46,8 @@ from modelmesh.ui.skills_view import SkillsView
 from modelmesh.ui.theme import apply_theme
 from modelmesh.ui.tools_view import ToolsView
 from modelmesh.ui.usage_view import UsageDialog
-from modelmesh.ui.workers import ChatWorker
+from modelmesh.ui.transcript import display_parts, render_conversation, request_history
+from modelmesh.ui.turn_controller import TurnController
 
 
 class MainWindow(QMainWindow):
@@ -72,7 +72,7 @@ class MainWindow(QMainWindow):
         self.storage = storage
 
         self.current_conversation_id: Optional[str] = None
-        self.current_worker: Optional[ChatWorker] = None
+        self._conversation_loaded = False
         self.session_total_cost: float = 0.0
 
         self.generation_settings: Dict[str, Any] = {
@@ -83,6 +83,11 @@ class MainWindow(QMainWindow):
 
         self._apply_router_settings()
         self._init_ui()
+        self.turns = TurnController(engine=engine, storage=storage, chat_view=self.chat_view, parent=self)
+        self.turns.busy_changed.connect(self.composer.set_streaming_state)
+        self.turns.status.connect(self.status_bar.showMessage)
+        self.turns.cost_added.connect(self._on_cost_added)
+        self.composer.attachment_error.connect(self.status_bar.showMessage)
         self._load_initial_data()
 
     def _init_ui(self) -> None:
@@ -175,7 +180,7 @@ class MainWindow(QMainWindow):
         self.composer = ComposerWidget(self)
         self.composer.set_skill_loader(self.engine.skill_loader)
         self.composer.send_requested.connect(self._on_send_message)
-        self.composer.stop_requested.connect(self._on_stop_streaming)
+        self.composer.stop_requested.connect(lambda: self.turns.stop())
         chat_layout.addWidget(self.composer)
 
         self.main_stack.addWidget(chat_container)
@@ -300,50 +305,15 @@ class MainWindow(QMainWindow):
     def _on_conversation_selected(self, conv_id: str) -> None:
         """Switch active conversation and render history in ChatView."""
         self._show_chat_view()
-        if self.current_worker and self.current_worker.isRunning():
-            self.current_worker.stop()
+        if conv_id == self.current_conversation_id and self._conversation_loaded:
+            return  # Re-clicking the open chat must not interrupt a streaming reply.
 
+        self.turns.detach()
         self.current_conversation_id = conv_id
+        self._conversation_loaded = True
         self.chat_view.clear()
-
-        # Load messages from storage (returns List[Message])
-        messages = self.storage.get_messages(conv_id)
-        for msg in messages:
-            role = msg.role
-            parts = [p.to_dict() for p in msg.parts]
-            meta = {
-                "model_id": msg.meta.get("model_id"),
-                "endpoint_id": msg.meta.get("endpoint_id"),
-                "provider_id": msg.meta.get("provider_id"),
-                "tokens_in": msg.meta.get("tokens_in"),
-                "tokens_out": msg.meta.get("tokens_out"),
-                "cost_usd": msg.meta.get("cost"),
-                "latency_sec": (msg.meta.get("latency_ms") or 0) / 1000.0,
-            }
-
-            if role == "user":
-                text = msg.text_content()
-                self.chat_view.add_user_message(msg.id, text, parts)
-            elif role == "assistant":
-                raw_text = msg.text_content()
-                raw_reasoning = msg.reasoning or ""
-                clean_reasoning, clean_text = extract_reasoning_and_content(
-                    raw_text=raw_text,
-                    explicit_reasoning=raw_reasoning,
-                    is_streaming=False,
-                )
-                self.chat_view.start_assistant_message(
-                    msg.id,
-                    model_name=meta["model_id"] or "",
-                    provider_name=meta["provider_id"] or "",
-                    strategy_name="loaded",
-                )
-                if clean_reasoning:
-                    self.chat_view.append_reasoning(msg.id, clean_reasoning)
-                self.chat_view.append_token(msg.id, clean_text)
-                self.chat_view.finish_assistant_message(msg.id, meta)
-
-        self.status_bar.showMessage(f"Loaded conversation '{conv_id}'")
+        render_conversation(self.chat_view, self.storage.get_messages(conv_id))
+        self.status_bar.showMessage("Conversation loaded.")
 
     def _on_rename_conversation(self, conv_id: str, new_title: str) -> None:
         self.storage.update_conversation(conv_id, title=new_title)
@@ -351,10 +321,15 @@ class MainWindow(QMainWindow):
         self.sidebar.set_conversations(conversations, selected_id=self.current_conversation_id)
 
     def _on_delete_conversation(self, conv_id: str) -> None:
+        if conv_id == self.turns.active_conversation_id:
+            self.turns.detach()
         self.storage.delete_conversation(conv_id)
         conversations = self.storage.list_conversations()
         if not conversations:
             self._on_new_chat()
+        elif conv_id != self.current_conversation_id:
+            # Deleting another chat keeps the open one (and any reply streaming in it).
+            self.sidebar.set_conversations(conversations, selected_id=self.current_conversation_id)
         else:
             self.sidebar.set_conversations(conversations, selected_id=conversations[0]["id"])
             self._on_conversation_selected(conversations[0]["id"])
@@ -362,222 +337,87 @@ class MainWindow(QMainWindow):
     def _on_suggestion_clicked(self, prompt: str) -> None:
         self.composer.set_prompt_text(prompt)
 
-    def _on_send_message(self, text: str, attachments: List[Dict[str, Any]]) -> None:
-        """Handle user message submission, build request, and launch streaming worker."""
+    def _on_send_message(self, text: str, attachments: List[Attachment]) -> None:
+        """Save the user message, render it, and start a turn."""
+        if self.turns.is_busy:
+            self.status_bar.showMessage("Please wait for the current reply to finish, or press Stop.")
+            return
         if not self.current_conversation_id:
             self._on_new_chat()
-
         conv_id = self.current_conversation_id
 
-        # Auto-title conversation if needed
         conv = self.storage.get_conversation(conv_id)
         if conv and conv.get("title") == "New Chat" and text:
-            words = text.strip().split()
-            auto_title = " ".join(words[:6])
-            self.storage.update_conversation(conv_id, title=auto_title)
-            conversations = self.storage.list_conversations()
-            self.sidebar.set_conversations(conversations, selected_id=conv_id)
+            self.storage.update_conversation(conv_id, title=" ".join(text.strip().split()[:6]))
+            self.sidebar.set_conversations(self.storage.list_conversations(), selected_id=conv_id)
 
-        # Build Canonical Message Parts
-        parts: List[Any] = []
-        for att in attachments:
-            if att.get("type") == "image":
-                parts.append(ImagePart(media_type=att["media_type"], data=att["data"]))
-            elif att.get("type") == "text":
-                fname = att.get("name", "document")
-                parts.append(TextPart(text=f"--- Begin {fname} ---\n{att['text']}\n--- End {fname} ---"))
-
+        parts: List[Any] = [att.part for att in attachments]
         if text:
             parts.append(TextPart(text=text))
-
         user_msg = Message(role="user", parts=parts)
-        self.storage.save_message(
-            message=user_msg,
-            conversation_id=conv_id,
-        )
+        self.storage.save_message(message=user_msg, conversation_id=conv_id)
+        self.chat_view.add_user_message(user_msg.id, text, display_parts([a.part for a in attachments]))
+        self._start_turn(conv_id)
 
-        # Render in ChatView
-        self.chat_view.add_user_message(
-            user_msg.id,
-            text,
-            [p.to_dict() for p in parts if isinstance(p, ImagePart)],
-        )
-
-        # Build full conversation request from storage
-        req_messages = self.storage.get_messages(conv_id)
-
+    def _start_turn(self, conv_id: str) -> None:
+        """Build the request from stored history and hand it to the turn controller."""
         tools_to_pass = (
             self.engine.tool_registry.get_tool_specs()
             if (self.tools_btn.isChecked() and self.engine.tool_registry is not None)
             else []
         )
-
         request = ChatRequest(
-            messages=req_messages,
+            messages=request_history(self.storage.get_messages(conv_id)),
             system_prompt=self.generation_settings.get("system_prompt"),
             tools=tools_to_pass,
             temperature=self.generation_settings.get("temperature"),
             max_tokens=self.generation_settings.get("max_tokens"),
         )
-
-        # Determine routing mode from dropdowns
         strategy_name = self.strategy_combo.currentData() or "smart_clef"
-        pinned_model_id = None
-        pinned_endpoint_id = None
-
+        pinned_model_id = pinned_endpoint_id = None
         if strategy_name == "manual":
             combo_data = self.model_combo.currentData() or {}
             pinned_model_id = combo_data.get("pinned_model_id")
             pinned_endpoint_id = combo_data.get("pinned_endpoint_id")
 
-        # Start Worker Thread
-        self.composer.set_streaming_state(True)
-        self.status_bar.showMessage("Routing and generating reply...")
-
-        assistant_msg_id = str(uuid.uuid4())
-        self.current_assistant_msg_id = assistant_msg_id
-        self.accumulated_text = ""
-        self.accumulated_reasoning = ""
-
-        self.current_worker = ChatWorker(
-            engine=self.engine,
-            request=request,
+        self.turns.start(
+            request,
+            conversation_id=conv_id,
             strategy_name=strategy_name,
             pinned_model_id=pinned_model_id,
             pinned_endpoint_id=pinned_endpoint_id,
-            conversation_id=conv_id,
             profile=str(get_app_settings().value("router/profile", "")) or None,
-            parent=self,
         )
 
-        self.current_worker.routed.connect(self._on_worker_routed)
-        self.current_worker.fallback.connect(self._on_worker_fallback)
-        self.current_worker.text_delta.connect(self._on_worker_text_delta)
-        self.current_worker.reasoning_delta.connect(self._on_worker_reasoning_delta)
-        self.current_worker.tool_call.connect(self._on_worker_tool_call)
-        self.current_worker.tool_start.connect(self._on_worker_tool_start)
-        self.current_worker.tool_result.connect(self._on_worker_tool_result)
-        self.current_worker.finished_turn.connect(self._on_worker_finished)
-        self.current_worker.error_occurred.connect(self._on_worker_error)
-        self.current_worker.start()
-
-    def _on_worker_routed(self, data: Dict[str, Any]) -> None:
-        self.chat_view.start_assistant_message(
-            self.current_assistant_msg_id,
-            model_name=data.get("model_id", ""),
-            provider_name=data.get("provider_id", ""),
-            strategy_name=data.get("strategy", ""),
-            reason=data.get("reason", ""),
-            metadata=data.get("metadata", {}),
-        )
-        self.status_bar.showMessage(
-            f"Streaming from '{data.get('model_id')}' via {data.get('provider_id')}..."
-        )
-
-
-    def _on_worker_fallback(self, data: Dict[str, Any]) -> None:
-        self.chat_view.show_fallback_notice(
-            data.get("from_endpoint_id", ""),
-            data.get("to_endpoint_id", ""),
-            data.get("error", ""),
-        )
-        self.status_bar.showMessage(f"Failover to {data.get('to_endpoint_id')}...")
-
-    def _on_worker_text_delta(self, chunk: str) -> None:
-        self.accumulated_text += chunk
-        self.chat_view.append_token(self.current_assistant_msg_id, chunk)
-
-    def _on_worker_reasoning_delta(self, chunk: str) -> None:
-        self.accumulated_reasoning += chunk
-        self.chat_view.append_reasoning(self.current_assistant_msg_id, chunk)
-
-    def _on_worker_tool_call(self, data: Dict[str, Any]) -> None:
-        self.chat_view.add_tool_card(
-            self.current_assistant_msg_id,
-            data.get("id", ""),
-            data.get("name", ""),
-            data.get("arguments", {}),
-        )
-
-    def _on_worker_tool_start(self, data: Dict[str, Any]) -> None:
-        self.chat_view.add_tool_card(
-            self.current_assistant_msg_id,
-            data.get("id", ""),
-            data.get("name", ""),
-            data.get("arguments", {}),
-        )
-        self.status_bar.showMessage(f"Executing tool '{data.get('name')}'...")
-
-    def _on_worker_tool_result(self, data: Dict[str, Any]) -> None:
-        self.chat_view.update_tool_result(
-            self.current_assistant_msg_id,
-            data.get("id", ""),
-            data.get("name", ""),
-            data.get("result"),
-            data.get("error"),
-            data.get("success", True),
-            data.get("duration_ms", 0),
-        )
-        status_text = "succeeded" if data.get("success") else "failed"
-        self.status_bar.showMessage(f"Tool '{data.get('name')}' {status_text} ({data.get('duration_ms', 0)}ms)")
-
-    def _on_worker_finished(self, data: Dict[str, Any]) -> None:
-        self.composer.set_streaming_state(False)
-        self.chat_view.finish_assistant_message(self.current_assistant_msg_id, data)
-
-        # Update Session Cost
-        cost = data.get("cost_usd", 0.0)
+    def _on_cost_added(self, cost: float) -> None:
         self.session_total_cost += cost
-        self.cost_status_label.setText(f"Session Est. Cost: ${self.session_total_cost:.4f} ")
-
-        # Extract reasoning from <thought>, <think>, etc. using robust parser
-        saved_reasoning, saved_text = extract_reasoning_and_content(
-            raw_text=self.accumulated_text,
-            explicit_reasoning=self.accumulated_reasoning,
-            is_streaming=False,
-        )
-
-        # Save assistant message to SQLite
-        asst_msg = Message.from_text("assistant", saved_text)
-        asst_msg.reasoning = saved_reasoning or None
-        asst_msg.id = self.current_assistant_msg_id
-        self.storage.save_message(
-            message=asst_msg,
-            conversation_id=self.current_conversation_id,
-            model_id=data.get("model_id"),
-            endpoint_id=data.get("endpoint_id"),
-            provider_id=data.get("provider_id"),
-            tokens_in=data.get("tokens_in", 0),
-            tokens_out=data.get("tokens_out", 0),
-            cost=cost,
-            latency_ms=int((data.get("latency_sec") or 0) * 1000),
-            status="complete",
-        )
-        self.status_bar.showMessage(f"Turn complete · {data.get('tokens_in', 0)} in / {data.get('tokens_out', 0)} out · ${cost:.5f}")
-
-    def _on_worker_error(self, data: Dict[str, Any]) -> None:
-        self.composer.set_streaming_state(False)
-        self.chat_view.show_error(
-            self.current_assistant_msg_id,
-            data.get("error", "Unknown error"),
-            data.get("category", "unknown"),
-        )
-        self.status_bar.showMessage("Error during generation.")
-
-    def _on_stop_streaming(self) -> None:
-        if self.current_worker and self.current_worker.isRunning():
-            self.current_worker.stop()
-            self.composer.set_streaming_state(False)
-            self.status_bar.showMessage("Generation stopped by user.")
+        self.cost_status_label.setText(f"Session Cost: ${self.session_total_cost:.4f} ")
 
     def _on_regenerate(self, message_id: str) -> None:
-        """Regenerate last response."""
-        stored = self.storage.get_messages(self.current_conversation_id)
-        if len(stored) >= 2:
-            # Last message was assistant, message before was user
-            last_user_msg = stored[-2]
-            text = last_user_msg.text_content()
-            self._on_send_message(text, [])
+        """Retry the latest reply: drop it and re-run the user message before it."""
+        if self.turns.is_busy or not self.current_conversation_id:
+            return
+        conv_id = self.current_conversation_id
+        stored = self.storage.get_messages(conv_id)
+        if not stored:
+            return
+        last = stored[-1]
+        if last.role == "assistant":
+            if last.id != message_id:
+                self.status_bar.showMessage("Only the latest reply can be retried.")
+                return
+            self.storage.delete_message(last.id)
+        elif last.role != "user":
+            return
+        # A failed turn left the user message unanswered: re-run it as-is.
+        self.chat_view.clear()
+        render_conversation(self.chat_view, self.storage.get_messages(conv_id))
+        self._start_turn(conv_id)
+
+    def closeEvent(self, event: Any) -> None:
+        """Stop and wait for background workers before the window goes away."""
+        self.turns.shutdown()
+        super().closeEvent(event)
 
     def _open_parameters_dialog(self) -> None:
         dlg = ParametersDialog(current_settings=self.generation_settings, parent=self)

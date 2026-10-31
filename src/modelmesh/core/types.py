@@ -17,16 +17,20 @@ Capability = Literal["streaming", "tools", "vision", "reasoning", "json_mode"]
 
 @dataclass
 class TextPart:
-    """A textual part of a message."""
+    """A textual part of a message. ``name`` is set when the text came from an attached file."""
     text: str
     type: Literal["text"] = "text"
+    name: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"type": self.type, "text": self.text}
+        data: Dict[str, Any] = {"type": self.type, "text": self.text}
+        if self.name:
+            data["name"] = self.name
+        return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> TextPart:
-        return cls(text=data.get("text", ""))
+        return cls(text=data.get("text", ""), name=data.get("name"))
 
 
 @dataclass
@@ -35,15 +39,20 @@ class ImagePart:
     media_type: str
     data: str  # Base64 encoded image string
     type: Literal["image"] = "image"
+    name: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"type": self.type, "media_type": self.media_type, "data": self.data}
+        data: Dict[str, Any] = {"type": self.type, "media_type": self.media_type, "data": self.data}
+        if self.name:
+            data["name"] = self.name
+        return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> ImagePart:
         return cls(
             media_type=data.get("media_type", "image/png"),
             data=data.get("data", ""),
+            name=data.get("name"),
         )
 
 

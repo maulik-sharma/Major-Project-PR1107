@@ -4,13 +4,34 @@ from __future__ import annotations
 
 import base64
 import mimetypes
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Union
 
 from modelmesh.core.types import ContentPart, ImagePart, TextPart
 
 MAX_TEXT_SIZE_BYTES = 200 * 1024  # 200 KB
+MAX_IMAGE_BYTES = 20 * 1024 * 1024  # 20 MB
 MAX_PDF_PAGES = 25
+IMAGE_TOKENS_ESTIMATE = 1000
+
+
+@dataclass
+class Attachment:
+    """A file attached in the composer: a display name plus the content part sent to the model."""
+    name: str
+    part: ContentPart
+
+    @property
+    def is_image(self) -> bool:
+        return isinstance(self.part, ImagePart)
+
+    def estimated_tokens(self) -> int:
+        """Rough input-token cost of this attachment."""
+        if isinstance(self.part, ImagePart):
+            return IMAGE_TOKENS_ESTIMATE
+        return len(self.part.text) // 4
+
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 TEXT_EXTENSIONS = {
     ".txt", ".md", ".py", ".js", ".ts", ".html", ".css", ".json",
@@ -35,8 +56,11 @@ def process_image(
         if not media_type:
             media_type = "image/png"
 
+    if len(raw_bytes) > MAX_IMAGE_BYTES:
+        raise ValueError(f"Image is larger than {MAX_IMAGE_BYTES // (1024 * 1024)} MB")
     b64_data = base64.b64encode(raw_bytes).decode("utf-8")
-    return ImagePart(media_type=media_type, data=b64_data)
+    name = Path(file_path_or_bytes).name if isinstance(file_path_or_bytes, (str, Path)) else None
+    return ImagePart(media_type=media_type, data=b64_data, name=name)
 
 
 def process_text_file(
@@ -47,7 +71,7 @@ def process_text_file(
     path = Path(file_path)
     content = path.read_text(encoding="utf-8", errors="replace")[:max_bytes]
     formatted = f"--- File: {path.name} ---\n{content}\n--- End File ---"
-    return TextPart(text=formatted)
+    return TextPart(text=formatted, name=path.name)
 
 
 def process_pdf(
@@ -72,13 +96,14 @@ def process_pdf(
             joined = "\n\n".join(extracted_text)
             trunc_note = f" (first {pages_to_read} of {num_pages} pages)" if num_pages > max_pages else ""
             formatted = f"--- PDF: {path.name}{trunc_note} ---\n{joined}\n--- End PDF ---"
-            return TextPart(text=formatted)
+            return TextPart(text=formatted, name=path.name)
         else:
             return TextPart(
-                text=f"[PDF '{path.name}' contained no extractable text. It may be a scanned image document.]"
+                text=f"[PDF '{path.name}' contained no extractable text. It may be a scanned image document.]",
+                name=path.name,
             )
     except Exception as exc:
-        return TextPart(text=f"[Error reading PDF '{path.name}': {exc}]")
+        return TextPart(text=f"[Error reading PDF '{path.name}': {exc}]", name=path.name)
 
 
 def process_attachment(file_path: Union[Path, str]) -> ContentPart:
@@ -92,3 +117,16 @@ def process_attachment(file_path: Union[Path, str]) -> ContentPart:
         return process_pdf(path)
     else:
         return process_text_file(path)
+
+
+def load_attachment(file_path: Union[Path, str]) -> Attachment:
+    """Read a file into an :class:`Attachment` (disk I/O: call off the UI thread)."""
+    path = Path(file_path)
+    return Attachment(name=path.name, part=process_attachment(path))
+
+
+def split_user_parts(parts: list) -> tuple:
+    """Split a stored user message into (typed text, attachment parts) for display."""
+    typed = "\n".join(p.text for p in parts if isinstance(p, TextPart) and not p.name)
+    attached = [p for p in parts if p.name or isinstance(p, ImagePart)]
+    return typed, attached

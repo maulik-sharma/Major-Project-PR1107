@@ -23,6 +23,20 @@ from modelmesh.core.types import (
     ProviderConfig,
 )
 from modelmesh.ui.chat_view import ChatView
+from modelmesh.ui.turn_controller import _Turn
+
+
+def wait_for_turn(win, qapp, timeout_s: float = 10.0) -> None:  # type: ignore[no-untyped-def]
+    """Pump the event loop until the window's chat turn has fully finished."""
+    import time
+
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        qapp.processEvents()
+        if not win.turns.is_busy and not win.turns._turns:
+            return
+        time.sleep(0.01)
+    raise AssertionError("chat turn did not finish")
 from modelmesh.ui.composer import ComposerWidget
 from modelmesh.ui.main_window import MainWindow
 from modelmesh.ui.parameters_dialog import ParametersDialog
@@ -197,9 +211,7 @@ def test_main_window_lifecycle(qapp, tmp_path: Path) -> None:
 
     # Send a message in manual mode
     win._on_send_message("Hello from unit test", [])
-    if win.current_worker:
-        win.current_worker.wait(5000)
-    qapp.processEvents()
+    wait_for_turn(win, qapp)
 
     # Verify messages saved
     msgs = storage.get_messages(win.current_conversation_id)
@@ -228,10 +240,13 @@ def test_thinking_tag_extraction_on_finish(qapp, tmp_path: Path) -> None:
         storage=storage,
     )
 
-    win.accumulated_text = "<thought>1. Analyzing constraint\n2. Thinking...</thought>Here is the final answer."
-    win.accumulated_reasoning = ""
-    win.current_assistant_msg_id = "test-msg-id"
-    win._on_worker_finished({
+    turn = _Turn(
+        worker=None,  # type: ignore[arg-type]
+        conversation_id=win.current_conversation_id,
+        msg_id="test-msg-id",
+        text="<thought>1. Analyzing constraint\n2. Thinking...</thought>Here is the final answer.",
+    )
+    win.turns._save(turn, {
         "model_id": "mock-fast",
         "endpoint_id": "mock-fast@mock",
         "provider_id": "mock",
@@ -239,7 +254,7 @@ def test_thinking_tag_extraction_on_finish(qapp, tmp_path: Path) -> None:
         "latency_sec": 0.5,
         "tokens_in": 10,
         "tokens_out": 20,
-    })
+    }, status="complete")
 
     msgs = storage.get_messages(win.current_conversation_id)
     assert len(msgs) == 1
@@ -264,17 +279,20 @@ def test_unclosed_thought_recovery_in_main_window(qapp, tmp_path: Path) -> None:
     )
 
     # Simulates model ending with unclosed thought and divider
-    win.accumulated_text = (
-        "<thought>Thinking about the ATS score...\n"
-        "All calculations done.\n"
-        "---\n"
-        "**ATS Score Estimate: 95/100**\n\n"
-        "### Executive Summary\n"
-        "Great resume."
+    turn = _Turn(
+        worker=None,  # type: ignore[arg-type]
+        conversation_id=win.current_conversation_id,
+        msg_id="test-unclosed-id",
+        text=(
+            "<thought>Thinking about the ATS score...\n"
+            "All calculations done.\n"
+            "---\n"
+            "**ATS Score Estimate: 95/100**\n\n"
+            "### Executive Summary\n"
+            "Great resume."
+        ),
     )
-    win.accumulated_reasoning = ""
-    win.current_assistant_msg_id = "test-unclosed-id"
-    win._on_worker_finished({
+    win.turns._save(turn, {
         "model_id": "mock-fast",
         "endpoint_id": "mock-fast@mock",
         "provider_id": "mock",
@@ -282,7 +300,7 @@ def test_unclosed_thought_recovery_in_main_window(qapp, tmp_path: Path) -> None:
         "latency_sec": 1.0,
         "tokens_in": 100,
         "tokens_out": 200,
-    })
+    }, status="complete")
 
     msgs = storage.get_messages(win.current_conversation_id)
     assert len(msgs) == 1

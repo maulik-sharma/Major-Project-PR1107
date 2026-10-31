@@ -28,9 +28,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from modelmesh.core.attachments import process_attachment
+from modelmesh.core.attachments import Attachment
 from modelmesh.core.skills import SkillLoader
-from modelmesh.core.types import ImagePart, TextPart
+from modelmesh.core.types import ImagePart
 from modelmesh.ui.skill_mention_popup import SkillMentionPopup
 
 SKILL_TOKEN_PROP = 1001
@@ -40,7 +40,7 @@ class AutoExpandingTextEdit(QTextEdit):
     """TextEdit with @ mention popup, atomic highlighted skill tokens, auto-expansion, and clipboard pasting."""
 
     send_pressed = pyqtSignal()
-    attachment_pasted = pyqtSignal(dict)
+    attachment_pasted = pyqtSignal(object)  # Attachment
     files_dropped = pyqtSignal(list)
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
@@ -273,13 +273,10 @@ class AutoExpandingTextEdit(QTextEdit):
                 buf.open(QIODevice.OpenModeFlag.WriteOnly)
                 img_data.save(buf, "PNG")
                 b64 = base64.b64encode(byte_array.data()).decode("utf-8")
-                att = {
-                    "type": "image",
-                    "name": "Pasted Image.png",
-                    "media_type": "image/png",
-                    "data": b64,
-                }
-                self.attachment_pasted.emit(att)
+                name = "Pasted Image.png"
+                self.attachment_pasted.emit(
+                    Attachment(name=name, part=ImagePart(media_type="image/png", data=b64, name=name))
+                )
                 return
 
         if source.hasUrls():
@@ -322,8 +319,9 @@ class AutoExpandingTextEdit(QTextEdit):
 class ComposerWidget(QWidget):
     """Bottom input bar with attachment tray, @ mention popup, token estimation, and Send/Stop button."""
 
-    send_requested = pyqtSignal(str, list)
+    send_requested = pyqtSignal(str, list)  # text, List[Attachment]
     stop_requested = pyqtSignal()
+    attachment_error = pyqtSignal(str)
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -331,7 +329,8 @@ class ComposerWidget(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAcceptDrops(True)
 
-        self._attachments: List[Dict[str, Any]] = []
+        self._attachments: List[Attachment] = []
+        self._attachment_workers: List[Any] = []
         self._is_streaming = False
 
         layout = QVBoxLayout(self)
@@ -357,7 +356,7 @@ class ComposerWidget(QWidget):
         # Text input on top
         self.text_input = AutoExpandingTextEdit()
         self.text_input.send_pressed.connect(self._on_send_clicked)
-        self.text_input.attachment_pasted.connect(self._add_attachment_dict)
+        self.text_input.attachment_pasted.connect(self._add_loaded_attachment)
         self.text_input.files_dropped.connect(self._on_files_dropped)
         self.text_input.textChanged.connect(self._update_token_estimate)
         card_vlayout.addWidget(self.text_input)
@@ -417,8 +416,7 @@ class ComposerWidget(QWidget):
             super().dropEvent(event)
 
     def _on_files_dropped(self, paths: List[Path]) -> None:
-        for p in paths:
-            self._add_attachment(p)
+        self._load_attachments(paths)
 
     def set_streaming_state(self, is_streaming: bool) -> None:
         """Switch action button between Send and Stop."""
@@ -449,6 +447,12 @@ class ComposerWidget(QWidget):
             self._on_send_clicked()
 
     def _on_send_clicked(self) -> None:
+        # Enter and the button both land here: never start a turn while one is running.
+        if self._is_streaming:
+            return
+        if self._attachment_workers:
+            self.attachment_error.emit("Still reading attachments, please wait a moment.")
+            return
         text = self.text_input.toPlainText().strip()
         if not text and not self._attachments:
             return
@@ -465,15 +469,29 @@ class ComposerWidget(QWidget):
             "",
             "Documents & Images (*.png *.jpg *.jpeg *.webp *.pdf *.txt *.py *.json *.csv *.md);;All Files (*)",
         )
-        for f in files:
-            self._add_attachment(Path(f))
+        self._load_attachments([Path(f) for f in files])
 
-    def _add_attachment(self, path: Path) -> None:
-        att = process_attachment(path)
-        if att:
-            self._add_attachment_dict(att)
+    def _load_attachments(self, paths: List[Path]) -> None:
+        """Read files on a worker thread; chips appear as each file is ready."""
+        if not paths:
+            return
+        from modelmesh.ui.workers import AttachmentWorker
 
-    def _add_attachment_dict(self, att: Dict[str, Any]) -> None:
+        worker = AttachmentWorker(paths, parent=self)
+        worker.attachment_ready.connect(self._add_loaded_attachment)
+        worker.attachment_failed.connect(
+            lambda name, msg: self.attachment_error.emit(f"Could not attach {name}: {msg}")
+        )
+        worker.finished.connect(lambda w=worker: self._on_attachment_worker_done(w))
+        self._attachment_workers.append(worker)
+        worker.start()
+
+    def _on_attachment_worker_done(self, worker: Any) -> None:
+        if worker in self._attachment_workers:
+            self._attachment_workers.remove(worker)
+        worker.deleteLater()
+
+    def _add_loaded_attachment(self, att: Attachment) -> None:
         self._attachments.append(att)
         self._render_chips()
 
@@ -505,8 +523,7 @@ class ComposerWidget(QWidget):
             chip_layout.setContentsMargins(6, 2, 4, 2)
             chip_layout.setSpacing(4)
 
-            name = att.get("name", "Attachment")
-            lbl = QLabel(name)
+            lbl = QLabel(att.name)
             lbl.setStyleSheet("font-size: 11.5px;")
             chip_layout.addWidget(lbl)
 
@@ -529,11 +546,6 @@ class ComposerWidget(QWidget):
         char_count = len(text)
         est_tokens = max(0, char_count // 4)
 
-        for att in self._attachments:
-            if att.get("type") == "image":
-                est_tokens += 1000
-            elif att.get("type") == "document":
-                txt = att.get("text", "")
-                est_tokens += len(txt) // 4
+        est_tokens += sum(att.estimated_tokens() for att in self._attachments)
 
         self.token_caption.setText(f"~{est_tokens:,} tokens")
