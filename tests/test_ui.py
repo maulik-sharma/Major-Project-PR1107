@@ -6,22 +6,8 @@ import pytest
 import respx
 from pathlib import Path
 
-# Ensure offscreen rendering and disable sandboxing for test runner
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ.setdefault("QTWEBENGINE_DISABLE_SANDBOX", "1")
-
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QLabel, QPushButton
-
-# Single QApplication fixture for pytest session
-@pytest.fixture(scope="session")
-def qapp():
-    app = QApplication.instance()
-    if app is None:
-        app = QApplication(sys.argv + ["--no-sandbox", "--disable-gpu"])
-    app.setApplicationName("ModelMesh")
-    app.setOrganizationName("ModelMesh")
-    return app
 
 
 from modelmesh.core.engine import ChatEngine

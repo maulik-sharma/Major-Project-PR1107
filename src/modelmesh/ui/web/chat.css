@@ -755,3 +755,62 @@ body.light-theme ::-webkit-scrollbar-thumb:hover {
 ::-webkit-scrollbar-corner {
   background-color: transparent;
 }
+
+/* Attachments shown in user bubbles */
+.user-attachment-image {
+  display: block;
+  max-width: 240px;
+  max-height: 180px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.user-attachment-chip {
+  display: inline-block;
+  font-size: 12px;
+  padding: 2px 8px;
+  margin: 0 6px 6px 0;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-muted);
+}
+
+.user-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Routing insights extras */
+.insights-subtle {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.insights-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 8px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.insights-attribution {
+  margin-top: 8px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.routing-notices span + br + span {
+  display: inline-block;
+  margin-top: 2px;
+}
+
+.tool-error-label,
+.tool-error-text {
+  color: #fca5a5;
+}
+
+body.light-theme .tool-error-label,
+body.light-theme .tool-error-text {
+  color: #b91c1c;
+}

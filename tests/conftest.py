@@ -2,11 +2,30 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import sys
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
 import pytest
+
+# Offscreen Qt with no Chromium sandbox, set before any QApplication exists.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("QTWEBENGINE_DISABLE_SANDBOX", "1")
+
+
+@pytest.fixture(scope="session")
+def qapp() -> Any:
+    """Single QApplication shared by every UI test."""
+    from PyQt6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication(sys.argv + ["--no-sandbox", "--disable-gpu"])
+    app.setApplicationName("ModelMesh")
+    app.setOrganizationName("ModelMesh")
+    return app
 
 from modelmesh.core import keys
 

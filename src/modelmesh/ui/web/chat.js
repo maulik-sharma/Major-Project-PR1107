@@ -7,6 +7,36 @@ let pyBridge = null;
 let currentAssistantId = null;
 let messageBuffers = {}; // msgId -> { text: '', reasoning: '', isStreaming: true }
 
+/**
+ * Escape text for insertion into HTML (element content or quoted attributes).
+ */
+function escapeHtml(value) {
+  return String(value === null || value === undefined ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Close a code fence left open mid-stream (``` / ```` / ~~~ fences).
+ */
+function closeOpenFence(text) {
+  let open = null;
+  for (const line of text.split('\n')) {
+    const m = line.match(/^\s{0,3}(`{3,}|~{3,})/);
+    if (!m) continue;
+    const fence = m[1];
+    if (!open) {
+      open = fence;
+    } else if (fence[0] === open[0] && fence.length >= open.length && line.trim() === fence) {
+      open = null;
+    }
+  }
+  return open ? `${text}\n${open}` : text;
+}
+
 // Initialize Qt WebChannel
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof QWebChannel !== 'undefined') {
@@ -90,31 +120,20 @@ function copyTextToClipboard(text, btnElement) {
  */
 function renderMarkdown(rawText, isStreaming = false) {
   if (!rawText) return '';
+  // Without both the parser and the sanitizer, never insert model output as HTML.
+  if (typeof marked === 'undefined' || !marked.parse || typeof DOMPurify === 'undefined' || !DOMPurify.sanitize) {
+    return `<p>${escapeHtml(rawText).replace(/\n/g, '<br/>')}</p>`;
+  }
   try {
-    let textToParse = rawText;
-
-    // Resilient fix for unclosed code fence while streaming
-    if (isStreaming) {
-      const codeFenceMatches = textToParse.match(/```/g);
-      if (codeFenceMatches && codeFenceMatches.length % 2 !== 0) {
-        textToParse += '\n```';
-      }
-    }
-
-    if (typeof marked !== 'undefined' && marked.parse) {
-      const parsed = marked.parse(textToParse);
-      if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
-        return DOMPurify.sanitize(parsed, {
-          ADD_ATTR: ['target', 'class', 'style'],
-          ADD_TAGS: ['span', 'code', 'pre', 'img', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'ul', 'ol', 'li', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'strong', 'em', 'del', 'a']
-        });
-      }
-      return parsed;
-    }
+    const textToParse = isStreaming ? closeOpenFence(rawText) : rawText;
+    return DOMPurify.sanitize(marked.parse(textToParse), {
+      ADD_ATTR: ['target', 'class'],
+      FORBID_ATTR: ['style'],
+    });
   } catch (err) {
     console.error('Markdown rendering error:', err);
+    return `<p>${escapeHtml(rawText).replace(/\n/g, '<br/>')}</p>`;
   }
-  return rawText;
 }
 
 function attachCodeCopyButtons(container) {
@@ -141,7 +160,7 @@ function attachCodeCopyButtons(container) {
 
     const header = document.createElement('div');
     header.className = 'code-header';
-    header.innerHTML = `<span>${lang}</span><button class="code-copy-btn">Copy</button>`;
+    header.innerHTML = `<span>${escapeHtml(lang)}</span><button class="code-copy-btn">Copy</button>`;
 
     const copyBtn = header.querySelector('.code-copy-btn');
     copyBtn.addEventListener('click', () => copyTextToClipboard(rawCode, copyBtn));
@@ -303,19 +322,26 @@ function add_user_message(msgId, text, parts = []) {
   row.className = 'message-row user-row';
   row.id = `msg-${msgId}`;
 
-  let imagesHtml = '';
-  if (parts && parts.length > 0) {
-    parts.forEach(p => {
-      if (p.media_type && p.data) {
-        imagesHtml += `<img src="data:${p.media_type};base64,${p.data}" style="max-width:240px;max-height:180px;border-radius:8px;margin-bottom:8px;display:block;" />`;
-      }
-    });
-  }
-
   const bubble = document.createElement('div');
   bubble.className = 'user-bubble';
-  const cleanText = (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) ? DOMPurify.sanitize(text) : text;
-  bubble.innerHTML = imagesHtml + cleanText;
+  (parts || []).forEach(p => {
+    if (p.media_type && p.data && /^image\/[\w.+-]+$/.test(p.media_type) && /^[A-Za-z0-9+/=]+$/.test(p.data)) {
+      const img = document.createElement('img');
+      img.src = `data:${p.media_type};base64,${p.data}`;
+      img.className = 'user-attachment-image';
+      bubble.appendChild(img);
+    } else if (p.name) {
+      const chip = document.createElement('div');
+      chip.className = 'user-attachment-chip';
+      chip.textContent = `📎 ${p.name}`;
+      bubble.appendChild(chip);
+    }
+  });
+  // Typed text is shown exactly as typed, never interpreted as HTML.
+  const textEl = document.createElement('div');
+  textEl.className = 'user-text';
+  textEl.textContent = text;
+  bubble.appendChild(textEl);
 
   row.appendChild(bubble);
   container.appendChild(row);
@@ -325,7 +351,7 @@ function add_user_message(msgId, text, parts = []) {
 /**
  * Start Assistant Message
  */
-function start_assistant_message(msgId, modelName = '', providerName = '', strategyName = '', reason = '') {
+function start_assistant_message(msgId, modelName = '', providerName = '', strategyName = '', reason = '', metadata = {}) {
   hideEmptyState();
   currentAssistantId = msgId;
   messageBuffers[msgId] = { text: '', reasoning: '', isStreaming: true };
@@ -363,17 +389,12 @@ function start_assistant_message(msgId, modelName = '', providerName = '', strat
   footer.className = 'meta-footer';
   footer.id = `meta-${msgId}`;
 
-  let items = [];
-  if (modelName) items.push(`<span>${modelName}</span>`);
-  if (providerName) items.push(`<span>${providerName}</span>`);
-  if (strategyName) {
-    const tooltip = reason ? ` title="${reason.replace(/"/g, '&quot;')}"` : '';
-    items.push(`<span${tooltip}>${strategyName}</span>`);
-  }
-  footer.innerHTML = items.join('<span class="meta-separator">·</span>');
+  const startMeta = { model_id: modelName, provider_id: providerName, strategy: strategyName, reason, metadata };
+  footer.innerHTML = buildFooterItems(startMeta).join('<span class="meta-separator">·</span>');
   row.appendChild(footer);
 
   container.appendChild(row);
+  renderRoutingNotices(msgId, metadata);
   scrollToBottom(true);
 }
 
@@ -410,92 +431,6 @@ function append_reasoning_chunk(msgId, chunk) {
 }
 
 /**
- * Show Failover Notice
- */
-function show_fallback_notice(fromCandId, toCandId, reason = '') {
-  const container = document.getElementById('chat-container');
-  if (!container) return;
-  const banner = document.createElement('div');
-  banner.className = 'fallback-banner';
-  banner.innerHTML = `
-    <span class="fallback-tag">Failover</span>
-    <span>Switched from <code>${fromCandId}</code> to <code>${toCandId}</code>${reason ? ` (${reason})` : ''}</span>
-  `;
-  container.appendChild(banner);
-  scrollToBottom(true);
-}
-
-/**
- * Add Tool Card
- */
-function add_tool_card(msgId, toolId, toolName, argsJson = '{}') {
-  const row = document.getElementById(`msg-${msgId}`);
-  if (!row) return;
-
-  let card = document.getElementById(`tool-${toolId}`);
-  if (!card) {
-    card = document.createElement('div');
-    card.className = 'tool-card open';
-    card.id = `tool-${toolId}`;
-
-    const contentEl = document.getElementById(`content-${msgId}`);
-    if (contentEl) {
-      row.insertBefore(card, contentEl);
-    } else {
-      row.appendChild(card);
-    }
-  }
-
-  card.innerHTML = `
-    <div class="tool-header" onclick="this.parentElement.classList.toggle('open')">
-      <div style="display:flex;align-items:center;gap:6px;">
-        <span class="tool-chevron">›</span>
-        <span>Tool: <strong>${toolName}</strong></span>
-      </div>
-      <span class="tool-status running" id="tool-status-${toolId}">Running...</span>
-    </div>
-    <div class="tool-body" id="tool-body-${toolId}">
-      <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">Arguments:</div>
-      <pre style="margin:0;padding:6px;background:var(--code-bg);border:none;"><code>${argsJson}</code></pre>
-    </div>
-  `;
-  scrollToBottom(false);
-}
-
-/**
- * Update Tool Result
- */
-function update_tool_result(msgId, toolId, toolName, resultStr, errorStr, success = true, durationMs = 0) {
-  const statusEl = document.getElementById(`tool-status-${toolId}`);
-  const bodyEl = document.getElementById(`tool-body-${toolId}`);
-
-  if (statusEl) {
-    statusEl.className = success ? 'tool-status success' : 'tool-status error';
-    statusEl.innerText = success ? `Success (${durationMs}ms)` : `Failed (${durationMs}ms)`;
-  }
-
-  if (bodyEl) {
-    const outcomeDiv = document.createElement('div');
-    outcomeDiv.style.marginTop = '8px';
-    outcomeDiv.style.borderTop = '1px solid var(--border-color)';
-    outcomeDiv.style.paddingTop = '6px';
-
-    if (success) {
-      outcomeDiv.innerHTML = `
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">Result:</div>
-        <pre style="margin:0;padding:6px;background:var(--code-bg);border:none;max-height:180px;overflow:auto;"><code>${resultStr}</code></pre>
-      `;
-    } else {
-      outcomeDiv.innerHTML = `
-        <div style="font-size:11px;color:#fca5a5;margin-bottom:4px;">Error:</div>
-        <div style="color:#fca5a5;font-size:12px;">${errorStr}</div>
-      `;
-    }
-    bodyEl.appendChild(outcomeDiv);
-  }
-}
-
-/**
  * Finish Assistant Message & Finalize Metadata
  */
 function finish_assistant_message(msgId, meta = {}) {
@@ -504,174 +439,9 @@ function finish_assistant_message(msgId, meta = {}) {
     buf.isStreaming = false;
     updateMessageDisplay(msgId);
   }
-
-  const footer = document.getElementById(`meta-${msgId}`);
-  const row = document.getElementById(`msg-${msgId}`);
-  if (footer) {
-    let items = [];
-    const model = meta.model_id || meta.model_name || '';
-    const prov = meta.provider_id || meta.provider_name || '';
-    let strat = meta.strategy || meta.strategy_name || '';
-    if (strat === 'smart_clef') {
-      strat = 'Auto · Smart';
-    }
-    const reason = meta.reason || '';
-
-    const decMeta = meta.metadata || {};
-    const decSource = decMeta.decision_source || meta.decision_source || '';
-
-    if (model) items.push(`<span>${model}</span>`);
-    if (prov) items.push(`<span>${prov}</span>`);
-    if (strat) {
-      const tooltip = reason ? ` title="${reason.replace(/"/g, '&quot;')}"` : '';
-      items.push(`<span${tooltip}>${strat}</span>`);
-    }
-
-    if (decSource) {
-      if (decSource === 'cloudflare') {
-        items.push('<span class="badge badge-source" title="Decided by Cloudflare Clef-flash">Clef-flash</span>');
-      } else if (decSource === 'heuristic_fallback') {
-        items.push('<span class="badge badge-warning" title="Fell back to local heuristic analyzer">Heuristic Fallback</span>');
-      } else if (decSource === 'cached') {
-        items.push('<span class="badge badge-source" title="Served from SQLite decision cache">Cached</span>');
-      } else if (decSource === 'heuristic') {
-        items.push('<span class="badge badge-source" title="Local heuristic analyzer">Heuristic</span>');
-      } else if (decSource === 'mock') {
-        items.push('<span class="badge badge-source" title="Mock deterministic analyzer">Mock</span>');
-      }
-    }
-
-    if (meta.latency_sec !== undefined) {
-      items.push(`<span>${Number(meta.latency_sec).toFixed(2)}s</span>`);
-    }
-    if (meta.cost_usd !== undefined && Number(meta.cost_usd) > 0) {
-      items.push(`<span>$${Number(meta.cost_usd).toFixed(5)}</span>`);
-    }
-    if (meta.tokens_in !== undefined && meta.tokens_out !== undefined) {
-      items.push(`<span>${meta.tokens_in} in / ${meta.tokens_out} out</span>`);
-    }
-
-    let metaHtml = items.join('<span class="meta-separator">·</span>');
-    metaHtml += `<span class="meta-separator" style="margin: 0 4px;"></span>`;
-
-    const hasInsights = decMeta.task || decMeta.need !== undefined || decMeta.smart_decision;
-    if (hasInsights) {
-      metaHtml += `<button class="insights-btn" onclick="toggleInsights('${msgId}')" title="Toggle Smart Routing Insights">⚡ Insights</button> `;
-    }
-
-    metaHtml += `
-      <button class="action-btn" onclick="copyMessageText('${msgId}')" title="Copy reply">Copy</button>
-      <button class="action-btn" onclick="regenerateMessage('${msgId}')" title="Retry generation">Retry</button>
-    `;
-
-    footer.innerHTML = metaHtml;
-
-    if (hasInsights && row) {
-      let panel = document.getElementById(`insights-${msgId}`);
-      if (!panel) {
-        panel = document.createElement('div');
-        panel.className = 'insights-panel';
-        panel.id = `insights-${msgId}`;
-        panel.style.display = 'none';
-        row.appendChild(panel);
-      }
-      panel.innerHTML = buildInsightsHtml(msgId, meta);
-    }
-  }
-
+  if (currentAssistantId === msgId) currentAssistantId = null;
+  renderFinishedFooter(msgId, meta);
   scrollToBottom(false);
-}
-
-function buildInsightsHtml(msgId, meta) {
-  const decMeta = meta.metadata || {};
-  const smartDec = decMeta.smart_decision || {};
-  const answers = smartDec.answers || {};
-
-  const task = decMeta.task || (answers.task && answers.task.choice) || 'general';
-  const diffScore = (answers.difficulty && answers.difficulty.score !== undefined) ? answers.difficulty.score : '-';
-  const precScore = (answers.precision && answers.precision.score !== undefined) ? answers.precision.score : '-';
-  const needVal = decMeta.need !== undefined ? Number(decMeta.need).toFixed(2) : '-';
-  const barVal = decMeta.bar !== undefined ? Number(decMeta.bar).toFixed(2) : '-';
-  const metric = decMeta.metric_used || 'intelligence';
-  const qChosen = decMeta.chosen_q !== undefined ? Number(decMeta.chosen_q).toFixed(2) : '-';
-  const latencyMs = decMeta.router_latency_ms !== undefined ? `${Number(decMeta.router_latency_ms).toFixed(0)} ms` : '-';
-  const source = decMeta.decision_source || 'clef-flash';
-
-  let candidatesHtml = '';
-  if (Array.isArray(decMeta.eligible_candidates) && decMeta.eligible_candidates.length > 0) {
-    const rows = decMeta.eligible_candidates.map(c => {
-      const isChosen = c.model_id === meta.model_id;
-      const qVal = c.q !== undefined ? Number(c.q).toFixed(2) : '-';
-      return `
-        <tr class="${isChosen ? 'chosen-row' : ''}">
-          <td>${c.model_id}</td>
-          <td>${qVal}</td>
-          <td>${isChosen ? '✓ Selected' : 'Admitted'}</td>
-        </tr>
-      `;
-    }).join('');
-
-    candidatesHtml = `
-      <div style="font-size: 11px; font-weight: 600; margin-top: 8px; color: var(--text-muted); text-transform: uppercase;">Evaluated Candidates</div>
-      <table class="insights-table">
-        <thead>
-          <tr><th>Model</th><th>Quality (q)</th><th>Status</th></tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    `;
-  }
-
-  let warningHtml = '';
-  if (decMeta.below_bar) {
-    warningHtml = `
-      <div style="margin-top: 8px; padding: 6px 10px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 4px; color: #fbbf24; font-size: 11px;">
-        ⚠ Pool capped the bar / Below-bar fallback candidate chosen
-      </div>
-    `;
-  }
-
-  return `
-    <div class="insights-header">
-      <span>⚡ Smart Routing Insights</span>
-      <span style="font-size: 11px; color: var(--text-muted);">${source} · ${latencyMs}</span>
-    </div>
-    <div class="insights-grid">
-      <div class="insights-card">
-        <div class="insights-card-label">Task</div>
-        <div class="insights-card-value">${task}</div>
-      </div>
-      <div class="insights-card">
-        <div class="insights-card-label">Difficulty</div>
-        <div class="insights-card-value">${diffScore}/4</div>
-      </div>
-      <div class="insights-card">
-        <div class="insights-card-label">Precision</div>
-        <div class="insights-card-value">${precScore}/3</div>
-      </div>
-      <div class="insights-card">
-        <div class="insights-card-label">Need / Bar</div>
-        <div class="insights-card-value">${needVal} / ${barVal}</div>
-      </div>
-      <div class="insights-card">
-        <div class="insights-card-label">Metric</div>
-        <div class="insights-card-value">${metric}</div>
-      </div>
-      <div class="insights-card">
-        <div class="insights-card-label">Quality (q)</div>
-        <div class="insights-card-value">${qChosen}</div>
-      </div>
-    </div>
-    ${warningHtml}
-    ${candidatesHtml}
-  `;
-}
-
-function toggleInsights(msgId) {
-  const panel = document.getElementById(`insights-${msgId}`);
-  if (panel) {
-    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-  }
 }
 
 function copyMessageText(msgId) {
@@ -690,22 +460,6 @@ function regenerateMessage(msgId) {
 }
 
 /**
- * Display Error Banner
- */
-function set_error(msgId, errorMsg, category = 'unknown') {
-  const row = document.getElementById(`msg-${msgId}`) || document.getElementById('chat-container');
-  if (!row) return;
-  const errorBanner = document.createElement('div');
-  errorBanner.className = 'error-banner';
-  errorBanner.innerHTML = `
-    <div style="font-weight:600;margin-bottom:2px;">Error (${category})</div>
-    <div>${errorMsg}</div>
-  `;
-  row.appendChild(errorBanner);
-  scrollToBottom(true);
-}
-
-/**
  * Clear Chat
  */
 function clear_chat() {
@@ -714,6 +468,8 @@ function clear_chat() {
     container.innerHTML = '';
   }
   messageBuffers = {};
+  currentAssistantId = null;
+  for (const key of Object.keys(toolCards)) delete toolCards[key];
   showEmptyState();
 }
 
@@ -735,11 +491,7 @@ window.add_user_message = add_user_message;
 window.start_assistant_message = start_assistant_message;
 window.append_text_chunk = append_text_chunk;
 window.append_reasoning_chunk = append_reasoning_chunk;
-window.show_fallback_notice = show_fallback_notice;
-window.add_tool_card = add_tool_card;
-window.update_tool_result = update_tool_result;
 window.finish_assistant_message = finish_assistant_message;
-window.set_error = set_error;
 window.clear_chat = clear_chat;
 window.set_theme = set_theme;
 window.onSuggestionClick = onSuggestionClick;

@@ -9,6 +9,7 @@ from modelmesh.core.errors import ProviderError, RoutingError
 from modelmesh.core.formatting import get_base_system_prompt
 from modelmesh.core.providers.base import get_adapter
 from modelmesh.core.registry import ModelRegistry
+from modelmesh.core.routing_log import record_turn, routing_metadata
 from modelmesh.core.skills import SkillLoader, get_load_skill_tool
 from modelmesh.core.tools.registry import ToolExecutionResult, ToolRegistry
 from modelmesh.core.types import (
@@ -178,6 +179,7 @@ class ChatEngine:
                 "strategy": decision.strategy_name,
                 "reason": decision.reason,
                 "decision_id": decision.decision_id,
+                "metadata": routing_metadata(decision),
             },
         )
 
@@ -437,42 +439,16 @@ class ChatEngine:
         )
 
         if self.storage is not None and decision is not None:
-            features = decision.request_features or {}
-            smart_dec = features.get("smart_decision")
-            if smart_dec is not None or decision.strategy_name == "smart_clef":
-                self.storage.record_smart_routing_log(
-                    decision=decision,
-                    chosen_candidate=successful_candidate,
-                    usage=final_usage,
-                    cost_usd=cost_usd,
-                    latency_ms=int(total_latency * 1000),
-                    ttft_ms=int((time_to_first_token or 0) * 1000),
-                    conversation_id=conversation_id,
-                    decision_source=features.get("decision_source", "none"),
-                    decision_provider_id=features.get("decision_provider_id"),
-                    rubric_version=features.get("rubric_version"),
-                    decision_json=json.dumps(smart_dec.get("answers", {})) if isinstance(smart_dec, dict) else None,
-                    need=features.get("need"),
-                    bar=features.get("bar"),
-                    metric_used=features.get("metric_used"),
-                    score_snapshot_id=features.get("score_snapshot_id"),
-                    chosen_q=features.get("chosen_q"),
-                    chosen_score=features.get("chosen_score"),
-                    below_bar=_answered_below_bar(features, successful_candidate),
-                    router_latency_ms=int(features.get("router_latency_ms", 0)),
-                    router_cost_usd=float(features.get("router_cost_usd", 0.0)),
-                    stickiness_outcome=features.get("stickiness_outcome"),
-                )
-            else:
-                self.storage.record_routing_log(
-                    decision=decision,
-                    chosen_candidate=successful_candidate,
-                    usage=final_usage,
-                    cost_usd=cost_usd,
-                    latency_ms=int(total_latency * 1000),
-                    ttft_ms=int((time_to_first_token or 0) * 1000),
-                    conversation_id=conversation_id,
-                )
+            record_turn(
+                self.storage,
+                decision,
+                answered_by=successful_candidate,
+                usage=final_usage,
+                cost_usd=cost_usd,
+                latency_ms=int(total_latency * 1000),
+                ttft_ms=int((time_to_first_token or 0) * 1000),
+                conversation_id=conversation_id,
+            )
 
         yield StreamEvent(
             type=StreamEventType.USAGE,
@@ -487,14 +463,11 @@ class ChatEngine:
                 "candidate": successful_candidate,
                 "cost_usd": cost_usd,
                 "latency_sec": round(total_latency, 3),
+                "strategy": decision.strategy_name if decision else strategy_name,
+                "reason": decision.reason if decision else "",
+                "decision_id": decision.decision_id if decision else "",
+                "metadata": routing_metadata(decision, successful_candidate) if decision else {},
                 "ttft_sec": round(time_to_first_token or 0.0, 3),
             },
         )
 
-
-def _answered_below_bar(features: Dict[str, Any], answered_by: Candidate) -> bool:
-    """True if Smart picked below the bar, or failover landed on a below-bar model (spec 4.5)."""
-    if features.get("below_bar"):
-        return True
-    admitted = features.get("admitted_model_ids") or []
-    return bool(admitted) and answered_by.model_id not in admitted

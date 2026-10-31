@@ -6,24 +6,43 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import logging
+
 from PyQt6.QtCore import QObject, QTimer, QUrl, pyqtSignal, pyqtSlot
-from PyQt6.QtGui import QColor, QDesktopServices
+from PyQt6.QtGui import QColor, QDesktopServices, QGuiApplication
 from PyQt6.QtWebChannel import QWebChannel
-from PyQt6.QtWebEngineCore import QWebEnginePage
+from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 
 from modelmesh.ui.settings.tools_tab import get_app_settings
 
+logger = logging.getLogger(__name__)
+
+
+# Only these link schemes are handed to the system; anything else in model output is ignored.
+SAFE_LINK_SCHEMES = frozenset({"http", "https", "mailto"})
+
+
+def open_external_link(url: QUrl) -> bool:
+    """Open a web/mail link in the system handler. Returns False for any other scheme."""
+    if url.scheme().lower() not in SAFE_LINK_SCHEMES:
+        logger.warning("Blocked link with scheme '%s'", url.scheme())
+        return False
+    return QDesktopServices.openUrl(url)
+
 
 class CustomWebEnginePage(QWebEnginePage):
-    """Custom WebEnginePage that intercepts navigation to external URLs."""
+    """Page that keeps the transcript in place and only opens safe external links."""
 
     def acceptNavigationRequest(
         self, url: QUrl, _type: QWebEnginePage.NavigationType, isMainFrame: bool
     ) -> bool:
         if _type == QWebEnginePage.NavigationType.NavigationTypeLinkClicked:
-            QDesktopServices.openUrl(url)
+            open_external_link(url)
+            return False
+        # The transcript itself is the only page this view may load.
+        if isMainFrame and not url.isLocalFile():
             return False
         return super().acceptNavigationRequest(url, _type, isMainFrame)
 
@@ -74,11 +93,17 @@ class ChatView(QWebEngineView):
 
         self._page = CustomWebEnginePage(self)
         self.setPage(self._page)
+        self._page.settings().setAttribute(
+            QWebEngineSettings.WebAttribute.JavascriptCanAccessClipboard, True
+        )
         self.set_theme(saved_theme)
 
         self.bridge = ChatBridge()
         self.bridge.regenerate_requested.connect(self.regenerate_requested)
         self.bridge.suggestion_clicked.connect(self.suggestion_clicked)
+        # Fallbacks when the page cannot use navigator.clipboard / follow a link itself.
+        self.bridge.copy_requested.connect(lambda text: QGuiApplication.clipboard().setText(text))
+        self.bridge.link_clicked.connect(lambda url: open_external_link(QUrl(url)))
 
         self._channel = QWebChannel(self.page())
         self._channel.registerObject("pyBridge", self.bridge)
@@ -99,6 +124,9 @@ class ChatView(QWebEngineView):
         self.load(QUrl.fromLocalFile(str(html_path.resolve())))
 
     def _on_load_finished(self, ok: bool) -> None:
+        if not ok:
+            logger.error("Chat transcript page failed to load; messages cannot be displayed.")
+            return
         self._is_page_loaded = True
         self._run_js("set_theme", self._theme_name)
         for script in self._queued_js:
@@ -122,7 +150,10 @@ class ChatView(QWebEngineView):
     def _run_js(self, func_name: str, *args: Any) -> None:
         """Safely invoke a JavaScript function with JSON-encoded arguments."""
         encoded_args = [json.dumps(a) for a in args]
-        script = f"if (typeof window['{func_name}'] === 'function') {{ window['{func_name}']({', '.join(encoded_args)}); }}"
+        script = (
+            f"if (typeof window['{func_name}'] === 'function') {{ window['{func_name}']({', '.join(encoded_args)}); }}"
+            f" else {{ console.error('ModelMesh: missing JS function {func_name}'); }}"
+        )
         if self._is_page_loaded:
             self.page().runJavaScript(script)
         else:
