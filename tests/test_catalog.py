@@ -195,3 +195,14 @@ def test_failed_fetch_proposes_nothing() -> None:
 def test_fetch_requires_catalog_settings() -> None:
     with pytest.raises(ProviderError):
         fetch_catalog(ProviderConfig(id="x", protocol="openai_compat"))
+
+
+def test_never_joins_a_model_on_the_same_provider_or_without_a_price() -> None:
+    prov = _provider("paid")
+    # Existing logical model 'gpt-x' already calls a newer version on this provider.
+    existing = _model("gpt-x", "paid", "gpt-x.1", price=2.0)
+    models = {"gpt-x": existing}
+    entry = CatalogEntry(api_model="gpt-x", display_name="GPT X (old)")  # no price in the list
+    created = apply_changes(models, {"paid": prov}, compute_changes([existing], prov, [entry]))
+    assert [e.id for e in existing.endpoints] == ["gpt-x@paid"]  # untouched
+    assert [m.id for m in created] == ["gpt-x-2"] and created[0].routing.routable is False

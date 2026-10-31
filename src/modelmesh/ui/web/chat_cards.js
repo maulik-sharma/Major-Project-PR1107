@@ -202,7 +202,8 @@ function buildInsightsHtml(meta) {
     const rows = r.candidates.map(c => {
       const chosen = c.model_id === meta.model_id;
       const unscored = c.q === null || c.q === undefined;
-      const status = chosen ? '✓ Selected' : (c.admitted ? 'Admitted' : (unscored ? 'No score' : 'Below bar'));
+      const status = chosen ? '✓ Selected'
+        : (c.admitted ? 'Admitted' : (unscored ? (c.note || 'No score') : 'Below bar'));
       return `<tr class="${chosen ? 'chosen-row' : ''}"><td>${escapeHtml(c.model_id)}</td>` +
         `<td>${escapeHtml(fmtNum(c.q))}</td><td>${escapeHtml(status)}</td></tr>`;
     }).join('');

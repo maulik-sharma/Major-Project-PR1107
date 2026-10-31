@@ -160,7 +160,10 @@ def apply_changes(
     """Apply chosen changes in place. Returns models created for "new" changes (caller adds them).
 
     A new catalog model joins an existing logical model with the same derived id
-    (the same model served by another provider); otherwise a new model is made.
+    only when that is plausibly the same model served by another provider: the
+    model has no endpoint on this provider yet and the new endpoint's price is
+    known (an unpriced endpoint would enter cost routing at $0). Otherwise it
+    becomes a model of its own with a suffixed id.
     """
     created: Dict[str, ModelConfig] = {}
     for ch in changes:
@@ -178,6 +181,11 @@ def apply_changes(
         model = models.get(mid) or created.get(mid)
         free = provider.catalog.assume_free or _is_free(e)
         price_known = free or e.price_in_per_mtok is not None
+        if model is not None and (not price_known or any(x.provider == provider.id for x in model.endpoints)):
+            base, n = mid, 2
+            while mid in models or mid in created:
+                mid, n = f"{base}-{n}", n + 1
+            model = None
         if model is None:
             caps = ["streaming"]
             if e.tools is not False:

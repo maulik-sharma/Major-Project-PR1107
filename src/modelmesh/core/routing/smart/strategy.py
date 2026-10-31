@@ -178,7 +178,12 @@ class SmartClefStrategy(Strategy):
             strategy_name=self.name,
             reason=reason,
             eligible_candidates=[
-                {"endpoint_id": c.endpoint_id, "model_id": c.model_id, "q": select_meta["q_scores"].get(c.model_id)}
+                {
+                    "endpoint_id": c.endpoint_id,
+                    "model_id": c.model_id,
+                    "q": select_meta["q_scores"].get(c.model_id),
+                    "note": _candidate_note(c, select_meta, task_choice),
+                }
                 for c in eligible_candidates
             ],
             request_features=all_meta,
@@ -189,3 +194,20 @@ def _noul(answers: Dict[str, Any], key: str) -> float:
     """Return a yes/no probability answer, or 0.0 if absent."""
     obj = answers.get(key)
     return float(obj.get("noul", 0.0)) if isinstance(obj, dict) else 0.0
+
+
+def _candidate_note(cand: Candidate, select_meta: Dict[str, Any], task: str) -> Optional[str]:
+    """Why a candidate got no quality score this turn (None when it was ranked)."""
+    if cand.model_id in select_meta["q_scores"]:
+        return None
+    if cand.model_id not in set(select_meta.get("pool_model_ids") or []):
+        routing = cand.model_config.routing
+        if not routing.routable:
+            return "Manual only (no price)"
+        if "all" not in routing.admitted_tasks and task not in routing.admitted_tasks:
+            return "Not for this task"
+        return "Excluded by pool settings"
+    if cand.model_id in set(select_meta.get("lacking_metric_models") or []):
+        metric = select_meta.get("metric_used") or ""
+        return f"No {metric.replace('_', ' ')} score"
+    return "No score"

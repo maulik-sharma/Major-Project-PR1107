@@ -212,3 +212,16 @@ def test_strategy_reads_metric_preferences_from_config() -> None:
     decision = SmartClefStrategy(config=cfg).rank(cands, request, features)
     assert decision.request_features["metric_used"] == "arena_overall"
     assert decision.chosen_candidate.model_id == "pricey"
+
+
+def test_unranked_candidates_say_why() -> None:
+    cfg = SmartRoutingConfig()
+    ranked, manual, unscored = cand("ranked", 1.0), cand("manual", 0.0), cand("unscored", 0.5)
+    ranked.model_config.scores.manual.intelligence = 40
+    manual.model_config.scores.manual.intelligence = 60
+    manual.model_config.routing.routable = False
+    request = ChatRequest(messages=[Message.from_text("user", "hi")])
+    features = {"smart_decision": {"answers": {"task": {"choice": "chat_general"}}, "source": "heuristic"}}
+    decision = SmartClefStrategy(config=cfg).rank([ranked, manual, unscored], request, features)
+    notes = {c["model_id"]: c["note"] for c in decision.eligible_candidates}
+    assert notes == {"ranked": None, "manual": "Manual only (no price)", "unscored": "No score"}

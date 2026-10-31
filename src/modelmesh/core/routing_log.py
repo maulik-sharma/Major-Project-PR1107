@@ -50,9 +50,13 @@ def routing_metadata(decision: RoutingDecision, answered_by: Optional[Candidate]
             {
                 "model_id": c.get("model_id"),
                 "q": c.get("q"),
+                "note": c.get("note"),
                 "admitted": c.get("model_id") in admitted,
             }
-            for c in _unique_models(decision.eligible_candidates)
+            for c in sorted(  # ranked models first, best q on top
+                _unique_models(decision.eligible_candidates),
+                key=lambda c: (c.get("q") is None, -(c.get("q") or 0.0)),
+            )
         ],
     })
     return meta
