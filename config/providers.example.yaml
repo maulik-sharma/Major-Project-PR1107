@@ -99,6 +99,11 @@ models:
         price_out_per_mtok: 15.00
         priority: 1
         enabled: true
+    # Links to score sources (Settings > Scores > Auto-match Links fills these in).
+    # aa_slug: Artificial Analysis slug; arena_name: LMArena model name, exactly as listed.
+    scores:
+      aa_slug: claude-sonnet-5-5
+      arena_name: "Claude Sonnet 5.5 (xHigh)"
 
   # Google Gemini Flash
   - id: gemini-flash
