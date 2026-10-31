@@ -9,7 +9,7 @@
 7. **Do not invent APIs.** If unsure about a provider's request or response shape, read its official docs or ask. Do not guess parameter names.
 8. **Scope discipline.** Implement only the task you were given. List the files you intend to touch before editing. Do not refactor unrelated files, add dependencies, or rename things without asking.
 9. **Every task ends with:** tests passing (`pytest`), a short note of what changed, and a git commit. Small commits, one per task.
-10. **Files stay small** (aim under about 300 lines). Type hints everywhere. Docstrings on every public class and function. Use `pathlib`, explicit `utf-8`, and `QStandardPaths` for app data locations (Windows-safe).
+10. **Files stay small**. Type hints everywhere. Docstrings on every public class and function. Use `pathlib`, explicit `utf-8`, and `QStandardPaths` for app data locations (Windows-safe).
 11. **Errors are normalized.** Adapters convert every provider failure into a `ProviderError` with a category (`auth`, `rate_limit`, `context_length`, `bad_request`, `network`, `server`, `unknown`) and a `retryable` flag. UI shows friendly messages, never raw tracebacks.
 12. **Every new feature gets a capability flag or registry entry,** not a special case in the chat engine.
 13. **A model is not a provider.** A logical **Model** (identity, tier, default capabilities) can have several **Endpoints** (one per provider that serves it, each with its own `api_model` string, price, and limits). Provider-specific data (`api_model`, prices, quirks, region) lives on the endpoint, never on the model. The router, engine, and adapters operate on **Candidates** (a model plus one endpoint), never on bare models.
